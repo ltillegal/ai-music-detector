@@ -10,18 +10,18 @@ project_dir = .
 input_file = app.py
 
 # directory where the executable output is generated
-exec_directory = .
+exec_directory = release
 
 # path to the project file relative to project_dir
 project_file = 
 
 # application icon
-icon = /home/music/ai-music-detector/.venv/lib/python3.13/site-packages/PySide6/scripts/deploy_lib/pyside_icon.jpg
+icon =
 
 [python]
 
 # python path
-python_path = /home/music/ai-music-detector/.venv/bin/python
+python_path =
 
 # python packages to install
 packages = 
@@ -44,7 +44,7 @@ modules = Core,DBus,Gui,Network,OpenGL,Qml,QmlMeta,QmlModels,QmlWorkerScript,Qui
 
 # qt plugins used by the application. only relevant for desktop deployment
 # for qt plugins used in android application see [android][plugins]
-plugins = accessiblebridge,egldeviceintegrations,generic,iconengines,imageformats,networkaccess,networkinformation,platforminputcontexts,platforms,platforms/darwin,platformthemes,qmllint,qmltooling,scenegraph,styles,tls,vectorimageformats,wayland-decoration-client,wayland-graphics-integration-client,wayland-shell-integration,xcbglintegrations
+plugins =
 
 [android]
 
