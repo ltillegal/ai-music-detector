@@ -1,8 +1,3 @@
-#!/bin/bash
-cd /Users/music/ai-music-detector
-exec /Users/music/.local/bin/uv run python app.py
-
-
-
-
-
+#!/usr/bin/env bash
+cd "$(dirname "$0")"
+exec uv run python app.py

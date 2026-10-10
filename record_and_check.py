@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 
@@ -36,19 +37,31 @@ def record(seconds, samplerate=SAMPLE_RATE):
 
 def record_and_detect(seconds=DURATION, model=None, output=None):
     audio = record(seconds)
-    if output is None:
+    created_tmp = output is None
+    if created_tmp:
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         tmp.close()
         wav_path = tmp.name
     else:
         wav_path = output
-    sf.write(wav_path, audio.astype(np.float32), SAMPLE_RATE, subtype="PCM_16")
-    return detect(wav_path, model) if model else detect(wav_path)
+    try:
+        sf.write(wav_path, audio.astype(np.float32), SAMPLE_RATE, subtype="PCM_16")
+        return detect(wav_path, model) if model else detect(wav_path)
+    finally:
+        if created_tmp:
+            try:
+                os.remove(wav_path)
+            except OSError:
+                pass
 
 
 def main(argv=None):
     args = parse_args(argv)
-    result = record_and_detect(args.seconds, args.model, args.output)
+    try:
+        result = record_and_detect(args.seconds, args.model, args.output)
+    except Exception as exc:
+        print(f"ошибка: {exc}", file=sys.stderr)
+        return 1
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 

@@ -30,7 +30,7 @@ class Worker(QObject):
         try:
             result = detect(path)
         except Exception as exc:
-            result = {"file": path, "p_ai": None, "verdict": "Uncertain", "error": str(exc)}
+            result = {"file": path, "p_ai": None, "verdict": "Error", "error": str(exc)}
         self.resultReady.emit(json.dumps(result, ensure_ascii=False, indent=2))
 
     @Slot()
@@ -38,7 +38,7 @@ class Worker(QObject):
         try:
             result = record_and_detect(MIC_DURATION)
         except Exception as exc:
-            result = {"file": "(mic)", "p_ai": None, "verdict": "Uncertain", "error": str(exc)}
+            result = {"file": "(mic)", "p_ai": None, "verdict": "Error", "error": str(exc)}
         self.resultReady.emit(json.dumps(result, ensure_ascii=False, indent=2))
 
 

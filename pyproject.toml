@@ -10,10 +10,20 @@ dependencies = [
     "pytest>=9.1.1",
     "sounddevice>=0.5.6",
     "soundfile>=0.14.0",
+    "soxr>=1.1.0",
 ]
 
 [project.scripts]
 ai-music-detector = "ai_music_detector:main"
+
+[project.optional-dependencies]
+sonics = [
+    "torch>=2.4",
+    "torchaudio>=2.4",
+    "timm>=1.0.7",
+    "fvcore>=0.1.5",
+    "sonics @ git+https://github.com/awsaf49/sonics.git",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.13,<0.13.0"]
