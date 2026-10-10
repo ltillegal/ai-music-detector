@@ -76,6 +76,10 @@ uv pip install "sonics @ git+https://github.com/awsaf49/sonics.git" timm fvcore
 Отключить SONICS можно флагом `--no-sonics` у CLI (используется только
 ArtifactNet).
 
+> Внимание: обычный `uv sync` (без `--extra sonics`) удаляет вручную
+> установленные `torch`/`sonics` из окружения. После `uv sync` повторите
+> команды установки SONICS выше.
+
 ## Использование
 
 ### CLI: файл
