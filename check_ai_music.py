@@ -34,6 +34,9 @@ CHUNK_LEN = 4 * SR  # 176400
 MODEL_FILENAME = "artifactnet_v94_full.onnx"
 THRESHOLD_AI = 0.6
 THRESHOLD_HUMAN = 0.4
+# ниже этого RMS (~ -80 dBFS) аудио считаем тишиной: модели на нулях дают
+# произвольный скор, поэтому вердикт не выдаём
+SILENCE_RMS = 1e-4
 
 # Бюджет прогресса по стадиям (доли 0..1).
 _P_READ = 0.05
@@ -143,7 +146,7 @@ def predict(chunks, model_path, progress=None):
     return np.asarray(probs, dtype=np.float32)
 
 
-def _apply_verdict(result, artifact, sonics, lofcz, degraded=False):
+def _apply_verdict(result, artifact, sonics, lofcz, degraded=False, silent=False):
     """Совместить ArtifactNet, SONICS и lofcz в вердикт.
 
     ArtifactNet и lofcz ловят вокодеры Suno/Udio, но слепы к диффузионным
@@ -161,6 +164,12 @@ def _apply_verdict(result, artifact, sonics, lofcz, degraded=False):
         "lofcz": lofcz_p,
     }
     signals = {k: v for k, v in available.items() if v is not None}
+
+    if silent:
+        result["verdict"] = "Uncertain"
+        result["reasons"] = ["silent_audio"]
+        return
+
     if not signals:
         result["verdict"] = "Uncertain"
         result["reasons"] = ["no_signals"]
@@ -199,6 +208,8 @@ def detect(file, model_path=MODEL_PATH, use_sonics=True, use_lofcz=True,
     _emit(progress, 0.0, "reading")
     audio = load_audio(file)
     duration_sec = round(len(audio) / SR, 3)
+    rms = float(np.sqrt(np.mean(np.square(audio)))) if len(audio) else 0.0
+    silent = rms < SILENCE_RMS
     _emit(progress, _P_READ, "reading")
 
     chunks = make_chunks(audio)
@@ -211,6 +222,7 @@ def detect(file, model_path=MODEL_PATH, use_sonics=True, use_lofcz=True,
         "file": file,
         "p_ai": None,
         "verdict": "Uncertain",
+        "signals": {},
         "duration_sec": duration_sec,
         "n_chunks": len(chunks),
         "n_valid": int(finite.size),
@@ -224,6 +236,8 @@ def detect(file, model_path=MODEL_PATH, use_sonics=True, use_lofcz=True,
         warnings.append("short_audio")
     if finite.size == 0:
         warnings.append("no_finite")
+    if silent:
+        warnings.append("silent_audio")
 
     artifact = float(np.median(finite)) if finite.size else None
     if artifact is not None:
@@ -274,7 +288,7 @@ def detect(file, model_path=MODEL_PATH, use_sonics=True, use_lofcz=True,
         result["warning"] = "; ".join(i18n.tr(lang, f"warn_{w}") for w in warnings)
 
     degraded = use_sonics and sonics is None
-    _apply_verdict(result, artifact, sonics, lofcz, degraded=degraded)
+    _apply_verdict(result, artifact, sonics, lofcz, degraded=degraded, silent=silent)
     _emit(progress, 1.0, "done")
     return result
 

@@ -24,6 +24,18 @@ def test_detect_degraded_without_sonics(monkeypatch):
     assert "sonics_unavailable" in result["warnings"]
 
 
+def test_detect_silence_is_uncertain(tmp_path):
+    import numpy as np
+    import soundfile as sf
+
+    path = tmp_path / "silence.wav"
+    sf.write(path, np.zeros(44100, np.float32), 44100)
+    result = check_ai_music.detect(str(path))
+    assert result["verdict"] == "Uncertain"
+    assert result["reasons"] == ["silent_audio"]
+    assert "silent_audio" in result["warnings"]
+
+
 def test_warning_localized():
     ru = check_ai_music.i18n.tr("ru", "warn_short_audio")
     en = check_ai_music.i18n.tr("en", "warn_short_audio")

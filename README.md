@@ -143,10 +143,13 @@ Fields:
 - `sonics_available` / `lofcz_available` — whether each detector could run
   (SONICS only needs the onnxruntime core dependency, so it is virtually always
   `true`; the models may still be downloaded on first use).
-- `warnings` — list of codes (`short_audio`, `no_finite`, `sonics_unavailable`,
-  `sonics_error`, `lofcz_unavailable`, `lofcz_error`); the CLI also renders a
-  human `warning` string in the selected `--lang`. Without SONICS the `Human`
-  verdict is suppressed.
+- `warnings` — list of codes (`short_audio`, `no_finite`, `silent_audio`,
+  `sonics_unavailable`, `sonics_error`, `lofcz_unavailable`, `lofcz_error`); the
+  CLI also renders a human `warning` string in the selected `--lang`. Without
+  SONICS the `Human` verdict is suppressed. Nearly-silent input (RMS below
+  `SILENCE_RMS`, ~ -80 dBFS) never gets an `AI` verdict — the models return
+  arbitrary scores on pure zeros — so the verdict is `Uncertain`
+  (`reasons: ["silent_audio"]`).
 - `windows` — per-window probabilities for the timeline.
 - `sonics.<model>.win_frac` — share of 5-second windows flagged as AI;
   mid values indicate hybrid content.

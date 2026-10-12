@@ -44,9 +44,10 @@ SONICS больше НЕ требует torch: детектор работает
 - SONICS активен всегда (onnxruntime в ядре); нужны лишь скачанные ONNX-модели.
 - Если SONICS запрошен, но не отработал (нет моделей/сеть) — вердикт `Human`
   подавляется (`Uncertain` + `warning`), см. `_apply_verdict(..., degraded=True)`.
+- Почти бесшумный вход (RMS < `SILENCE_RMS`, ~ -80 dBFS) → вердикт `Uncertain`
+  (`reasons: ["silent_audio"]`), т.к. на нулях модели дают произвольный скор;
+  см. `_apply_verdict(..., silent=True)`.
 - GUI показывает прогресс/стадию, причины вердикта, таймлайн окон; язык и тему
   можно переключать (хранится в QSettings).
 - Пересборка ONNX: `uv run --group export python tools/export_sonics_onnx.py --out dist/sonics-onnx`,
-  затем `gh release upload sonics-onnx-v1 dist/sonics-onnx/<файлы>`.
-- GUI показывает прогресс/стадию, причины вердикта, таймлайн окон; язык и тему
-  можно переключать (хранится в QSettings).
+  затем `gh release upload sonics-onnx-v1 dist/sonics-onnx/<файлы>` (после — `uv sync`).
