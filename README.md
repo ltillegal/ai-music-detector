@@ -123,7 +123,55 @@ uv run pytest
 
 ## Упаковка в macOS `.app`
 
-Команда и настройки описаны в [`AGENTS.md`](AGENTS.md).
+`.app` собирается **только на macOS** (Nuitka компилирует под свою платформу).
+Нужны Xcode Command Line Tools (`xcode-select --install`) и [uv](https://docs.astral.sh/uv/).
+
+```bash
+git clone https://github.com/ltillegal/ai-music-detector.git
+cd ai-music-detector
+uv sync                       # PySide6 + dev-группа (nuitka, ordered_set, zstandard)
+uv run pyside6-deploy app.py  # читает pysidedeploy.spec
+open "release/AI Music Detector.app"
+```
+
+Что уже настроено в [`pysidedeploy.spec`](pysidedeploy.spec):
+
+- `title = AI Music Detector`, `exec_directory = release`, `mode = onefile`;
+- `qml_files = ui/main.qml` — иначе QML не попадёт в bundle;
+- `extra_args ... --include-data-files=artifactnet_v94_full.onnx[.data]` —
+  ONNX-модель зашивается внутрь;
+- `macos.permissions` — запрос доступа к микрофону.
+
+Дополнительно описано в [`AGENTS.md`](AGENTS.md).
+
+### SONICS в собранном приложении
+
+Не устанавливайте `torch` в сборочный venv — тогда Nuitka его не найдёт,
+SONICS автоматически отключится (`available()` вернёт `False`), а размер
+`.app` останется разумным. Приложение будет работать на одном ArtifactNet.
+Если установить `torch`, Nuitka потащит его в бандл (сотни МБ и долгая сборка).
+
+### Apple Silicon
+
+Сборочный venv должен быть нативным arm64 (не Rosetta), иначе получится
+x86_64-приложение.
+
+### Подпись и запуск
+
+Для локального запуска достаточно `open`. Если macOS блокирует приложение:
+
+```bash
+xattr -dr com.apple.quarantine "release/AI Music Detector.app"
+```
+
+Для распространения нужно подписать и нотаризовать:
+
+```bash
+codesign --deep --force --sign "<Developer ID>" "release/AI Music Detector.app"
+# notarytool submit ... && xcrun stapler staple ...
+```
+
+Иконка опциональна: положите `.icns` и укажите путь в `icon = ` в спеке.
 
 ## Благодарности
 
