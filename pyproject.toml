@@ -28,10 +28,11 @@ dev = [
     "ruff>=0.9.0",
     "zstandard>=0.25.0",
 ]
-# SONICS-детектор. Включён в default-groups, поэтому обычные `uv sync` и
-# `uv run python app.py` его сохраняют. Для лёгкого окружения (например, при
-# сборке macOS .app) используйте `uv sync --no-group sonics`.
-sonics = [
+# Тяжёлые зависимости ТОЛЬКО для пересборки ONNX-моделей SONICS
+# (tools/export_sonics_onnx.py). Обычная работа, тесты и CI их не используют:
+# сам детектор работает на onnxruntime с готовыми .onnx.
+export = [
+    "onnx>=1.16",
     "torch>=2.4",
     "torchaudio>=2.4",
     "torchvision",
@@ -51,7 +52,7 @@ select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501", "BLE001"]
 
 [tool.uv]
-default-groups = ["dev", "sonics"]
+default-groups = ["dev"]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

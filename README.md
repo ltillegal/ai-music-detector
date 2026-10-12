@@ -24,11 +24,11 @@ over windows.
 smoothed into a hull, the hull is subtracted, and the remaining residue
 ("fakeprint") is fed to a 15 KB ONNX model that returns an AI probability.
 
-**SONICS** runs by default (a CPU build of torch is part of the default
-install): audio is resampled to 16 kHz, split into 5-second windows (2.5 s
-hop), each window is unit-variance normalised and passed through two SpecTTTra
-models (`gamma-5s`, `beta-5s`). Per model, the score is the mean of the top-3
-windows.
+**SONICS** runs by default on **ONNX Runtime** (no torch): audio is resampled
+to 16 kHz, split into 5-second windows (2.5 s hop), each window is
+unit-variance normalised and its log-mel spectrogram (computed in numpy) is
+passed through two SpecTTTra models (`gamma-5s`, `beta-5s`) exported to ONNX.
+Per model, the score is the mean of the top-3 windows.
 
 Verdict logic:
 
@@ -48,9 +48,9 @@ corroborated.
 - Python >= 3.13
 - [uv](https://docs.astral.sh/uv/)
 - A microphone (only for mic recording)
-- SONICS is installed by default (`torch`, `torchaudio`, `timm`, `fvcore`,
-  `sonics`); it can be skipped with `--no-group sonics`. ArtifactNet and lofcz
-  have no extra dependencies.
+- All three detectors share the core dependencies (onnxruntime, numpy, scipy).
+  There is no heavy ML stack: no torch. The SONICS ONNX models (~138 MB) are
+  downloaded on first run.
 
 ## Installation
 
@@ -61,28 +61,21 @@ uv sync
 ```
 
 `uv sync` installs the core dependencies (PySide6, onnxruntime, soundfile,
-sounddevice, scipy) **and** the SONICS stack — the `sonics` dependency group is
-part of `default-groups`, so the CPU build of torch is pulled from the CPU
-index automatically. The model files (`artifactnet_v94_full.onnx`[.data],
-`lofcz_ai_music_detector.onnx`, `lofcz_preprocessing.json`) are shipped in the
-repository.
+sounddevice, scipy, soxr) — no torch. The model files
+(`artifactnet_v94_full.onnx`[.data], `lofcz_ai_music_detector.onnx`,
+`lofcz_preprocessing.json`) are shipped in the repository.
 
-The SONICS weights (`gamma-5s`, `beta-5s`, ~69 MB each) are downloaded from
-Hugging Face on first run and cached in `HF_HOME` (the GUI shows a
-"downloading" stage). CPU inference is roughly 2 seconds per minute of audio
-per model.
+The SONICS ONNX models (`gamma-5s`, `beta-5s`, ~69 MB each) and the mel filter
+are downloaded on first run from the project's
+[`sonics-onnx-v1`](https://github.com/ltillegal/ai-music-detector/releases/tag/sonics-onnx-v1)
+release and cached in `~/.cache/ai-music-detector/sonics-onnx` (the GUI/CLI
+shows a "loading model" stage). Override the cache with `SONICS_ONNX_DIR` and
+the download base with `SONICS_ONNX_BASE`. CPU inference is roughly 2 seconds
+per minute of audio per model.
 
-### Lean install (without SONICS)
-
-To skip torch (~200 MB) — for a minimal CLI or when packaging a `.app`:
-
-```bash
-uv sync --no-group sonics
-```
-
-SONICS then disables itself (`available()` returns `False`), the CLI adds a
-`warning` and the GUI shows a banner; `Human` verdicts become `Uncertain`
-because the style detector cannot corroborate them.
+The heavy stack (torch, torchaudio, timm, fvcore, sonics, onnx) is only needed
+to **re-export** the models — see `tools/export_sonics_onnx.py` and the `export`
+dependency group (`uv run --group export ...`).
 
 ## Usage
 
@@ -147,7 +140,9 @@ Fields:
 - `signals` — the signals that were actually available.
 - `reasons` — why the verdict was chosen (machine-readable codes; the GUI
   localises them).
-- `sonics_available` / `lofcz_available` — whether each detector could run.
+- `sonics_available` / `lofcz_available` — whether each detector could run
+  (SONICS only needs the onnxruntime core dependency, so it is virtually always
+  `true`; the models may still be downloaded on first use).
 - `warnings` — list of codes (`short_audio`, `no_finite`, `sonics_unavailable`,
   `sonics_error`, `lofcz_unavailable`, `lofcz_error`); the CLI also renders a
   human `warning` string in the selected `--lang`. Without SONICS the `Human`
@@ -169,10 +164,12 @@ uv run python record_and_check.py --seconds 10 --output rec.wav  # keep the reco
   `artifactnet_v94_full.onnx.data`). The default path is resolved relative to
   `check_ai_music.py`; override with `--model`.
 - **lofcz**: `lofcz_ai_music_detector.onnx` + `lofcz_preprocessing.json`.
-- **SONICS**: Hugging Face `awsaf49/sonics-spectttra-gamma-5s` and
-  `awsaf49/sonics-spectttra-beta-5s`. Override the model ids with the
-  `SONICS_MODELS` environment variable and the number of top windows with
-  `SONICS_TOP_K`.
+- **SONICS**: ONNX exports of `awsaf49/sonics-spectttra-gamma-5s` and
+  `awsaf49/sonics-spectttra-beta-5s`, hosted in the
+  [`sonics-onnx-v1`](https://github.com/ltillegal/ai-music-detector/releases/tag/sonics-onnx-v1)
+  release and downloaded on demand. Override the base names / cache / source
+  with `SONICS_MODELS`, `SONICS_ONNX_DIR`, `SONICS_ONNX_BASE`, and the number
+  of top windows with `SONICS_TOP_K`.
 
 ## Testing
 
@@ -181,8 +178,9 @@ uv run pytest
 ```
 
 Tests use files from `fixtures/` (`known_suno.wav`, `known_human.wav`).
-SONICS/lofcz tests are skipped automatically when their dependencies are not
-installed.
+Integration tests for SONICS are skipped automatically when the ONNX models are
+not yet cached (so CI does not download them); the numpy preprocessing is
+covered by unit tests either way.
 
 ## Packaging into a macOS `.app`
 
@@ -193,7 +191,7 @@ platform). You need Xcode Command Line Tools (`xcode-select --install`) and
 ```bash
 git clone https://github.com/ltillegal/ai-music-detector.git
 cd ai-music-detector
-uv sync --no-group sonics   # PySide6 + dev group, without the ~200 MB torch
+uv sync                       # PySide6 + dev group (no torch)
 uv run pyside6-deploy app.py  # reads pysidedeploy.spec
 open "release/AI Music Detector.app"
 ```
@@ -210,11 +208,12 @@ See [`AGENTS.md`](AGENTS.md) for more details.
 
 ### SONICS in the packaged app
 
-Build with `uv sync --no-group sonics` so torch is not in the build
-environment. Nuitka then cannot find it, SONICS disables itself (`available()`
-returns `False`) and the `.app` stays a reasonable size — it runs on
-ArtifactNet + lofcz and shows a warning banner. Installing torch makes Nuitka
-bundle it (hundreds of MB and a very slow build).
+SONICS runs on ONNX Runtime, which is already bundled, so there is nothing extra
+to exclude — and no torch to accidentally drag in. The `.app` stays small; the
+SONICS ONNX models (~138 MB) are downloaded to
+`~/.cache/ai-music-detector/sonics-onnx` on first use. To make the app work
+offline, add the ONNX files and `mel_fb.npy` to `extra_args` with
+`--include-data-files` (and point `SONICS_ONNX_DIR` at the bundled folder).
 
 ### Apple Silicon
 
