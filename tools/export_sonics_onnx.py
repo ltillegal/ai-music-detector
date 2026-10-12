@@ -12,6 +12,9 @@ ONNX, поэтому в граф уходит только «голова» мо
 Пример:
     uv run --group export python tools/export_sonics_onnx.py --out dist/sonics-onnx
 
+(Группа `export` ставит torch в .venv — после экспорта верните обычное окружение
+командой `uv sync`.)
+
 Артефакты на выход:
     <model>.onnx   — вход ``melspec`` (float32, [batch, 128, 157]), выход ``logits``
     mel_fb.npy     — мел-фильтр (128, 1025), float32

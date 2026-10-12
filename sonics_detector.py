@@ -93,7 +93,7 @@ def models_cached():
 def _download(url, dest, progress=None, frac=(0.0, 1.0)):
     dest.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, headers={"User-Agent": "ai-music-detector"})
-    with urllib.request.urlopen(req) as resp:  # noqa: S310 (доверенный источник)
+    with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 (доверенный источник)
         total = int(resp.headers.get("Content-Length") or 0)
         with tempfile.NamedTemporaryFile(dir=dest.parent, delete=False) as tmp:
             got = 0
