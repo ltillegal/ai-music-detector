@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Lofcz-детектор AI-музыки — «fakeprint» + маленький ONNX-классификатор.
 
 Идея из lofcz/ai-music-detector (MIT): усреднённый спектр в полосе 1–8 кГц

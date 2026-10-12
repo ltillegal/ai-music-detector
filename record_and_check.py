@@ -40,9 +40,8 @@ def record_and_detect(seconds=DURATION, model=None, output=None, progress=None, 
     audio = record(seconds)
     created_tmp = output is None
     if created_tmp:
-        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        tmp.close()
-        wav_path = tmp.name
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
     else:
         wav_path = output
     try:

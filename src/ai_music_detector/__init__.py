@@ -16,5 +16,5 @@ def main() -> None:
             f"Не удалось загрузить GUI ({exc}). Запустите: uv run python app.py",
             file=sys.stderr,
         )
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
     raise SystemExit(app.main())

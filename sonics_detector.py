@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """SONICS (SpecTTTra) — спектрограммный детектор AI-музыки.
 
 В отличие от ArtifactNet/lofcz, которые ищут «физический» отпечаток вокодеров
@@ -41,8 +40,8 @@ _MODELS = None
 def available():
     """True, если torch и sonics импортируются."""
     try:
-        import torch  # noqa: F401
         import sonics  # noqa: F401
+        import torch  # noqa: F401
     except Exception:
         return False
     return True

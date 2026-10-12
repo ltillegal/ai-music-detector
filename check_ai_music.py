@@ -212,7 +212,7 @@ def detect(file, model_path=MODEL_PATH, use_sonics=True, use_lofcz=True,
         "p_ai": None,
         "verdict": "Uncertain",
         "duration_sec": duration_sec,
-        "n_chunks": int(len(chunks)),
+        "n_chunks": len(chunks),
         "n_valid": int(finite.size),
         "windows": {
             "artifactnet": [None if not np.isfinite(p) else round(float(p), 4) for p in probs],

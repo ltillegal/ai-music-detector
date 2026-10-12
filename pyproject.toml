@@ -25,6 +25,7 @@ build-backend = "uv_build"
 dev = [
     "nuitka>=4.2.1",
     "ordered-set>=4.1.0",
+    "ruff>=0.9.0",
     "zstandard>=0.25.0",
 ]
 # SONICS-детектор. Включён в default-groups, поэтому обычные `uv sync` и
@@ -38,6 +39,16 @@ sonics = [
     "fvcore>=0.1.5",
     "sonics @ git+https://github.com/awsaf49/sonics.git",
 ]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Намеренно широкий `except Exception` в детекторах: необязательный сигнал не
+# должен ломать основной результат (ArtifactNet/SONICS/lofcz и progress-колбэк).
+ignore = ["E501", "BLE001"]
 
 [tool.uv]
 default-groups = ["dev", "sonics"]

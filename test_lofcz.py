@@ -1,5 +1,5 @@
-import soundfile as sf
 import pytest
+import soundfile as sf
 
 import lofcz_detector
 
