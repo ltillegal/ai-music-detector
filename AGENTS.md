@@ -3,7 +3,8 @@
 ## Структура проекта
 - app.py — главный вход (GUI)
 - check_ai_music.py — логика детекции (ArtifactNet + объединение с SONICS)
-- sonics_detector.py — опциональный SONICS-детектор (SpecTTTra)
+- sonics_detector.py — SONICS-детектор (SpecTTTra)
+- i18n.py — строки интерфейса (en/ru)
 - ui/main.qml — определение интерфейса
 - artifactnet_v94_full.onnx — файл модели
 - fixtures/ — тестовые аудио

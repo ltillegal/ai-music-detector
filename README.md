@@ -83,7 +83,9 @@ uv run python app.py
 ```
 
 Drag & drop an audio file onto the window, use **Choose file**, or record
-10 seconds from the microphone.
+10 seconds from the microphone. The interface language (English / Russian) is
+chosen with the **RU / EN** switcher in the top-right corner and remembered
+between runs.
 
 ### CLI: analyze a file
 

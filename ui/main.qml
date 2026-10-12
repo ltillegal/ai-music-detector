@@ -18,6 +18,7 @@ ApplicationWindow {
     property real sonProb: -1
     property string rawJson: ""
     property bool showDetails: false
+    property string lang: bridge.language
 
     Material.theme: Material.Dark
     Material.accent: Material.Purple
@@ -121,12 +122,22 @@ ApplicationWindow {
                     font.bold: true
                 }
                 Label {
-                    text: "ArtifactNet + SONICS — детекция AI-музыки"
+                    text: bridge.tr(window.lang, "subtitle")
                     opacity: 0.7
                 }
             }
 
             Item { Layout.fillWidth: true }
+
+            ComboBox {
+                id: langBox
+                model: ["RU", "EN"]
+                currentIndex: window.lang === "en" ? 1 : 0
+                Layout.preferredWidth: 78
+                onActivated: function(index) {
+                    bridge.language = (index === 1 ? "en" : "ru")
+                }
+            }
 
             BusyIndicator {
                 running: window.busy
@@ -149,8 +160,7 @@ ApplicationWindow {
                 anchors.margins: 10
                 wrapMode: Text.WordWrap
                 color: "#ffcc80"
-                text: "SONICS не активен — детекция ограничена ArtifactNet, "
-                    + "вердикт Human не выдаётся. Установите: uv sync"
+                text: bridge.tr(window.lang, "sonics_warn")
             }
         }
 
@@ -172,12 +182,12 @@ ApplicationWindow {
                     spacing: 10
 
                     Button {
-                        text: "Выбрать файл"
+                        text: bridge.tr(window.lang, "choose_file")
                         enabled: !window.busy
                         onClicked: bridge.chooseFile()
                     }
                     Button {
-                        text: "Запись с микрофона"
+                        text: bridge.tr(window.lang, "record_mic")
                         enabled: !window.busy
                         highlighted: true
                         onClicked: bridge.detectMic()
@@ -197,7 +207,7 @@ ApplicationWindow {
 
                         Label {
                             Layout.alignment: Qt.AlignHCenter
-                            text: window.verdict === "" ? "Перетащите аудиофайл сюда" : window.verdict
+                            text: window.verdict === "" ? bridge.tr(window.lang, "drop_hint") : window.verdict
                             font.pixelSize: window.verdict === "" ? 20 : 40
                             font.bold: window.verdict !== ""
                             color: window.verdict === "" ? "#90a4ae" : window.verdictColor(window.verdict)
@@ -206,14 +216,14 @@ ApplicationWindow {
                         Label {
                             Layout.alignment: Qt.AlignHCenter
                             visible: window.verdict === "" && !window.busy
-                            text: "wav · mp3 · flac — или выберите файл / запишите с микрофона"
+                            text: bridge.tr(window.lang, "formats_hint")
                             opacity: 0.6
                         }
 
                         Label {
                             Layout.alignment: Qt.AlignHCenter
                             visible: window.busy
-                            text: "Анализирую…"
+                            text: bridge.tr(window.lang, "analyzing")
                             opacity: 0.8
                         }
 
@@ -226,11 +236,11 @@ ApplicationWindow {
                             spacing: 12
 
                             SignalBar {
-                                title: "ArtifactNet (вокодеры Suno/Udio)"
+                                title: bridge.tr(window.lang, "bar_artifactnet")
                                 value: window.artProb
                             }
                             SignalBar {
-                                title: "SONICS (стиль, диффузионные модели)"
+                                title: bridge.tr(window.lang, "bar_sonics")
                                 value: window.sonProb
                             }
                         }
@@ -244,7 +254,8 @@ ApplicationWindow {
             visible: window.rawJson !== ""
 
             Button {
-                text: window.showDetails ? "Скрыть детали" : "Показать детали"
+                text: window.showDetails ? bridge.tr(window.lang, "hide_details")
+                                         : bridge.tr(window.lang, "show_details")
                 flat: true
                 onClicked: window.showDetails = !window.showDetails
             }

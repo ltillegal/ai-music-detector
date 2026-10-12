@@ -7,11 +7,12 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QThread, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QSettings, QThread, QUrl, Signal, Slot
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication, QFileDialog
 
+import i18n
 import sonics_detector
 from check_ai_music import detect
 from record_and_check import record_and_detect
@@ -48,6 +49,7 @@ class DetectorBridge(QObject):
 
     resultChanged = Signal(str)
     busyChanged = Signal(bool)
+    languageChanged = Signal()
 
     _run_file = Signal(str)
     _run_mic = Signal()
@@ -55,6 +57,9 @@ class DetectorBridge(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._sonics_available = sonics_detector.available()
+        self._settings = QSettings("ltillegal", "ai-music-detector")
+        lang = self._settings.value("language", i18n.DEFAULT_LANG)
+        self._language = lang if lang in i18n.LANGUAGES else i18n.DEFAULT_LANG
         self._worker = Worker()
         self._thread = QThread(self)
         self._worker.moveToThread(self._thread)
@@ -71,6 +76,23 @@ class DetectorBridge(QObject):
         return self._sonics_available
 
     sonicsAvailable = Property(bool, _get_sonics_available)
+
+    def _get_language(self):
+        return self._language
+
+    def _set_language(self, lang):
+        if lang not in i18n.LANGUAGES:
+            lang = i18n.DEFAULT_LANG
+        if lang != self._language:
+            self._language = lang
+            self._settings.setValue("language", lang)
+            self.languageChanged.emit()
+
+    language = Property(str, _get_language, _set_language, notify=languageChanged)
+
+    @Slot(str, str, result=str)
+    def tr(self, lang, key):
+        return i18n.tr(lang, key)
 
     def shutdown(self):
         self._thread.quit()
