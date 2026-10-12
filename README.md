@@ -1,186 +1,204 @@
 # AI Music Detector
 
-Детектор AI-сгенерированной музыки. Использует два независимых сигнала:
+A desktop app and CLI that detect AI-generated music. It combines two
+complementary detectors:
 
-- **ArtifactNet** (ONNX) — «физический» отпечаток вокодеров Suno/Udio
-  (периодические артефакты транспонированных свёрток в 1–8 кГц).
-- **SONICS** (SpecTTTra, опционально) — стиль-ориентированный
-  spectrogram-transformer; ловит современные диффузионные генераторы
-  (например Google Lyria 3 в producer.ai), к которым ArtifactNet слеп.
+- **ArtifactNet** (ONNX) — hears the *vocoder fingerprint* of Suno/Udio
+  (periodic deconvolution artefacts in the 1–8 kHz band).
+- **SONICS** (SpecTTTra, optional) — a style-based spectrogram transformer
+  that catches modern diffusion-based generators (e.g. Google Lyria 3 in
+  producer.ai) which leave no vocoder fingerprint.
 
-Приложение анализирует аудио и возвращает вероятность того, что трек создан ИИ.
+Each detector alone has blind spots; together they cover both older and
+newer generators.
 
-## Возможности
+## How it works
 
-- Детекция по аудиофайлу (`wav` / `mp3` / `flac`) — CLI.
-- Запись 10 секунд с микрофона и детекция — CLI и GUI.
-- Графический интерфейс на PySide6 + QML.
-- Упаковка в macOS `.app` через `pyside6-deploy` (Nuitka).
+Audio is converted to mono, resampled to 44.1 kHz and split into 4-second
+windows (`176400` samples) for **ArtifactNet**. The final score is the median
+over windows.
 
-## Как работает
+If the optional `sonics` dependencies are installed, **SONICS** also runs:
+audio is resampled to 16 kHz, split into 5-second windows (2.5 s hop), each
+window is unit-variance normalised and passed through two SpecTTTra models
+(`gamma-5s`, `beta-5s`). Per model, the score is the mean of the top-3 windows.
 
-Аудио приводится к моно, 44.1 кГц и нарезается на окна по 4 секунды
-(`176400` сэмплов), затем каждое окно прогоняется через ONNX-модель
-**ArtifactNet**. Итоговая вероятность — медиана по окнам.
+Verdict logic:
 
-Если установлена опциональная группа `sonics`, параллельно запускается
-**SONICS**: аудио ресемплируется в 16 кГц, нарезается на окна по 5 с
-(шаг 2.5 с), каждое окно нормируется на единичную дисперсию и прогоняется
-через две модели SpecTTTra (`gamma-5s`, `beta-5s`). По каждой модели берётся
-среднее top-3 окон.
+| Condition | Verdict |
+| --------- | ------- |
+| ArtifactNet `>= 0.6` **or** SONICS `>= 0.8` | `AI` |
+| ArtifactNet `<= 0.4` **and** SONICS `<= 0.5` | `Human` |
+| otherwise | `Uncertain` |
 
-Итоговый вердикт `verdict`:
-
-- `AI` — если ArtifactNet `≥ 0.6` **или** SONICS `≥ 0.8`;
-- `Human` — если оба сигнала низкие (ArtifactNet `≤ 0.4` и SONICS `≤ 0.5`);
-- иначе `Uncertain`.
-
-В JSON также выводятся поля `p_ai_artifactnet`, `p_ai_sonics` и подробности
-`sonics` по каждой модели (`top_k`, `max`, `mean`, `win_frac`).
-`win_frac` — доля «горячих» окон: средние значения указывают на
-гибридный контент (AI-фрагмент внутри человеческого трека).
-
-Артефакты перекодирования в MP3 ниже 48 kbps и «физический» отпечаток
-вокодера не являются надёжным признаком для диффузионных моделей — именно
-для таких случаев нужен SONICS.
-
-## Требования
+## Requirements
 
 - Python >= 3.13
 - [uv](https://docs.astral.sh/uv/)
-- Микрофон (только для записи)
-- Для SONICS: `torch`, `torchaudio` (на CPU), `timm`, `fvcore`, `sonics`
+- A microphone (only for mic recording)
+- For SONICS: `torch`, `torchaudio`, `timm`, `fvcore`, `sonics`
 
-## Установка
+## Installation
 
 ```bash
+git clone https://github.com/ltillegal/ai-music-detector.git
+cd ai-music-detector
 uv sync
 ```
 
-### SONICS (опционально)
+`uv sync` installs the core dependencies (PySide6, onnxruntime, soundfile,
+sounddevice). The ONNX model files (`artifactnet_v94_full.onnx` and
+`artifactnet_v94_full.onnx.data`) are shipped in the repository.
 
-SONICS включается автоматически, если импортируются `torch` и `sonics`.
-Для установки:
+### Optional: enable SONICS
+
+SONICS turns on automatically when both `torch` and `sonics` can be imported.
+On Linux/CPU install the lightweight CPU build of torch:
 
 ```bash
-# CPU-сборка torch (меньше и быстрее на ноутбуках)
 uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-# остальные зависимости + сам пакет SONICS
 uv pip install "sonics @ git+https://github.com/awsaf49/sonics.git" timm fvcore
 ```
 
-Веса SONICS (`gamma-5s`, `beta-5s`, ~69 МБ каждая) скачиваются с HuggingFace
-при первом запуске и кэшируются в `HF_HOME`. Инференс на CPU — около
-2 c на минуту аудио на модель.
+The SONICS weights (`gamma-5s`, `beta-5s`, ~69 MB each) are downloaded from
+Hugging Face on first run and cached in `HF_HOME`. CPU inference is roughly
+2 seconds per minute of audio per model.
 
-Отключить SONICS можно флагом `--no-sonics` у CLI (используется только
-ArtifactNet).
+> Note: a plain `uv sync` (without `--extra sonics`) removes the manually
+> installed `torch`/`sonics` from the environment. Re-run the commands above
+> after `uv sync`.
 
-> Внимание: обычный `uv sync` (без `--extra sonics`) удаляет вручную
-> установленные `torch`/`sonics` из окружения. После `uv sync` повторите
-> команды установки SONICS выше.
-
-## Использование
-
-### CLI: файл
-
-```bash
-uv run python check_ai_music.py track.wav
-```
-
-### CLI: микрофон
-
-```bash
-uv run python record_and_check.py --seconds 10
-# сохранить запись: --output rec.wav
-```
+## Usage
 
 ### GUI
 
 ```bash
 uv run python app.py
-# или
-./run.sh app.py
 ```
 
-## Тесты
+Drag & drop an audio file onto the window, use **Choose file**, or record
+10 seconds from the microphone.
+
+### CLI: analyze a file
+
+```bash
+uv run python check_ai_music.py track.wav
+uv run python check_ai_music.py track.mp3 --no-sonics   # ArtifactNet only
+```
+
+The result is printed as JSON:
+
+```json
+{
+  "file": "track.wav",
+  "verdict": "AI",
+  "p_ai": 0.999565,
+  "p_ai_artifactnet": 0.999565,
+  "p_ai_sonics": 0.98546,
+  "sonics": { "sonics-spectttra-gamma-5s": { "top_k": 0.984, "max": 0.992,
+              "mean": 0.984, "win_frac": 1.0, "n_windows": 3 } },
+  "duration_sec": 10.0,
+  "n_chunks": 3,
+  "n_valid": 3
+}
+```
+
+Fields:
+
+- `p_ai` — combined probability (max of the available signals).
+- `p_ai_artifactnet` — ArtifactNet median over 4-second windows.
+- `p_ai_sonics` — SONICS mean of the two models (omitted without SONICS).
+- `sonics.<model>.win_frac` — share of 5-second windows flagged as AI;
+  mid values indicate hybrid content (an AI section inside a human track).
+
+### CLI: microphone
+
+```bash
+uv run python record_and_check.py --seconds 10
+uv run python record_and_check.py --seconds 10 --output rec.wav  # keep the recording
+```
+
+## Models
+
+- **ArtifactNet**: `artifactnet_v94_full.onnx` (+ external weights
+  `artifactnet_v94_full.onnx.data`). The default path is resolved relative to
+  `check_ai_music.py`; override with `--model`.
+- **SONICS**: Hugging Face `awsaf49/sonics-spectttra-gamma-5s` and
+  `awsaf49/sonics-spectttra-beta-5s`. Override the model ids with the
+  `SONICS_MODELS` environment variable and the number of top windows with
+  `SONICS_TOP_K`.
+
+## Testing
 
 ```bash
 uv run pytest
 ```
 
-Тесты используют файлы из `fixtures/` (`known_suno.wav`, `known_human.wav`).
-Тесты SONICS автоматически пропускаются, если `torch`/`sonics` не установлены.
+Tests use files from `fixtures/` (`known_suno.wav`, `known_human.wav`).
+SONICS tests are skipped automatically when `torch`/`sonics` are not installed.
 
-## Модели
+## Packaging into a macOS `.app`
 
-- **ArtifactNet**: `artifactnet_v94_full.onnx` (+ внешние веса
-  `artifactnet_v94_full.onnx.data`). Путь по умолчанию определяется
-  относительно `check_ai_music.py`, переопределяется флагом `--model`.
-- **SONICS**: HuggingFace `awsaf49/sonics-spectttra-gamma-5s` и
-  `awsaf49/sonics-spectttra-beta-5s` (id можно переопределить переменной
-  окружения `SONICS_MODELS`, число top-окон — `SONICS_TOP_K`).
-
-## Упаковка в macOS `.app`
-
-`.app` собирается **только на macOS** (Nuitka компилирует под свою платформу).
-Нужны Xcode Command Line Tools (`xcode-select --install`) и [uv](https://docs.astral.sh/uv/).
+A `.app` can only be built **on macOS** (Nuitka compiles for the host
+platform). You need Xcode Command Line Tools (`xcode-select --install`) and
+[uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/ltillegal/ai-music-detector.git
 cd ai-music-detector
-uv sync                       # PySide6 + dev-группа (nuitka, ordered_set, zstandard)
-uv run pyside6-deploy app.py  # читает pysidedeploy.spec
+uv sync                       # PySide6 + dev group (nuitka, ordered_set, zstandard)
+uv run pyside6-deploy app.py  # reads pysidedeploy.spec
 open "release/AI Music Detector.app"
 ```
 
-Что уже настроено в [`pysidedeploy.spec`](pysidedeploy.spec):
+What is configured in [`pysidedeploy.spec`](pysidedeploy.spec):
 
 - `title = AI Music Detector`, `exec_directory = release`, `mode = onefile`;
-- `qml_files = ui/main.qml` — иначе QML не попадёт в bundle;
+- `qml_files = ui/main.qml` — required, otherwise QML is not bundled;
 - `extra_args ... --include-data-files=artifactnet_v94_full.onnx[.data]` —
-  ONNX-модель зашивается внутрь;
-- `macos.permissions` — запрос доступа к микрофону.
+  the ONNX model is embedded into the bundle;
+- `macos.permissions` — microphone usage description.
 
-Дополнительно описано в [`AGENTS.md`](AGENTS.md).
+See [`AGENTS.md`](AGENTS.md) for more details.
 
-### SONICS в собранном приложении
+### SONICS in the packaged app
 
-Не устанавливайте `torch` в сборочный venv — тогда Nuitka его не найдёт,
-SONICS автоматически отключится (`available()` вернёт `False`), а размер
-`.app` останется разумным. Приложение будет работать на одном ArtifactNet.
-Если установить `torch`, Nuitka потащит его в бандл (сотни МБ и долгая сборка).
+Do not install `torch` in the build environment. Nuitka then cannot find it,
+SONICS disables itself (`available()` returns `False`) and the `.app` stays a
+reasonable size — it runs on ArtifactNet only. Installing `torch` makes Nuitka
+bundle it (hundreds of MB and a very slow build).
 
 ### Apple Silicon
 
-Сборочный venv должен быть нативным arm64 (не Rosetta), иначе получится
-x86_64-приложение.
+The build virtual environment must use a native arm64 Python (not Rosetta),
+otherwise you get an x86_64 app.
 
-### Подпись и запуск
+### Signing and running
 
-Для локального запуска достаточно `open`. Если macOS блокирует приложение:
+For local use, just `open` the app. If macOS blocks it:
 
 ```bash
 xattr -dr com.apple.quarantine "release/AI Music Detector.app"
 ```
 
-Для распространения нужно подписать и нотаризовать:
+For distribution, sign and notarize:
 
 ```bash
 codesign --deep --force --sign "<Developer ID>" "release/AI Music Detector.app"
 # notarytool submit ... && xcrun stapler staple ...
 ```
 
-Иконка опциональна: положите `.icns` и укажите путь в `icon = ` в спеке.
+An icon is optional: add an `.icns` file and set its path in `icon = ` in the
+spec.
 
-## Благодарности
+## Credits
 
-- [SONICS](https://github.com/awsaf49/sonics) (huggingface: `awsaf49/sonics-*`) — MIT.
+- [SONICS](https://github.com/awsaf49/sonics) (`awsaf49/sonics-*`) — MIT.
 - [lofcz/ai-music-detector](https://github.com/lofcz/ai-music-detector) — MIT
-  (идея «fakeprint» вокодеров).
+  (the vocoder "fakeprint" idea).
 - [Prototypr/ai-music-classifier](https://github.com/Prototypr/ai-music-classifier) —
-  ансамбль и правила корроборации сигналов.
+  detector ensemble and signal-corroboration rules.
 
-## Лицензия
+## License
 
 [MIT](LICENSE)

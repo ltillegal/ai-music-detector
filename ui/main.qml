@@ -5,103 +5,251 @@ import QtQuick.Layouts
 
 ApplicationWindow {
     id: window
-    width: 560
-    height: 360
+    width: 660
+    height: 600
+    minimumWidth: 520
+    minimumHeight: 480
     visible: true
-    title: "Детекция AI-музыки"
+    title: "AI Music Detector"
 
+    property bool busy: false
     property string verdict: ""
-    property string summary: ""
+    property real artProb: -1
+    property real sonProb: -1
+    property string rawJson: ""
+    property bool showDetails: false
 
     Material.theme: Material.Dark
     Material.accent: Material.Purple
     Material.primary: Material.BlueGrey
 
+    function verdictColor(v) {
+        if (v === "AI") return "#ff5252"
+        if (v === "Human") return "#00e676"
+        if (v === "Error") return "#ff9100"
+        if (v === "Uncertain") return "#ffd740"
+        return "#b0bec5"
+    }
+
+    function barColor(p) {
+        if (p < 0) return "#546e7a"
+        if (p >= 0.6) return "#ff5252"
+        if (p >= 0.4) return "#ffd740"
+        return "#00e676"
+    }
+
+    function toPath(url) {
+        return decodeURIComponent(url.toString().replace(/^file:\/\//, ""))
+    }
+
+    component SignalBar: ColumnLayout {
+        id: sb
+        property string title: ""
+        property real value: -1
+        Layout.fillWidth: true
+        spacing: 6
+
+        RowLayout {
+            Layout.fillWidth: true
+            Label {
+                text: sb.title
+                font.bold: true
+            }
+            Item { Layout.fillWidth: true }
+            Label {
+                text: sb.value >= 0 ? (sb.value * 100).toFixed(1) + "%" : "n/a"
+                color: window.barColor(sb.value)
+                font.bold: true
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 10
+            radius: 5
+            color: "#263238"
+
+            Rectangle {
+                width: parent.width * Math.max(0, Math.min(1, sb.value < 0 ? 0 : sb.value))
+                height: parent.height
+                radius: parent.radius
+                color: window.barColor(sb.value)
+                Behavior on width { NumberAnimation { duration: 350; easing.type: Easing.OutCubic } }
+            }
+        }
+    }
+
     Connections {
         target: bridge
+
         function onResultChanged(text) {
-            resultTextView.text = text
-            var obj
-            try {
-                obj = JSON.parse(text)
-            } catch (e) {
-                return
-            }
-            window.verdict = obj.verdict || ""
-            var art = obj.p_ai_artifactnet
-            var son = obj.p_ai_sonics
-            var parts = []
-            if (art !== undefined) parts.push("ArtifactNet " + Number(art).toFixed(3))
-            if (son !== undefined) parts.push("SONICS " + Number(son).toFixed(3))
-            window.summary = parts.join("   ·   ")
-            resultTextView.color = obj.verdict === "AI"
-                ? "#ff1744"
-                : obj.verdict === "Human"
-                    ? "#00e676"
-                    : obj.verdict === "Error"
-                        ? "#ff9100"
-                        : "#ffd740"
+            window.rawJson = text
+            var o = null
+            try { o = JSON.parse(text) } catch (e) { return }
+            window.verdict = o.verdict || ""
+            window.artProb = (o.p_ai_artifactnet !== undefined) ? o.p_ai_artifactnet : -1
+            window.sonProb = (o.p_ai_sonics !== undefined) ? o.p_ai_sonics : -1
+            window.showDetails = false
+        }
+
+        function onBusyChanged(b) {
+            window.busy = b
+        }
+    }
+
+    DropArea {
+        anchors.fill: parent
+        onDropped: function(drop) {
+            if (drop.hasUrls && drop.urls.length > 0)
+                bridge.detectFile(window.toPath(drop.urls[0]))
         }
     }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 16
-        spacing: 12
+        anchors.margins: 20
+        spacing: 14
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
 
-            Button {
-                text: "Выбрать файл"
-                onClicked: bridge.chooseFile()
+            ColumnLayout {
+                spacing: 2
+                Label {
+                    text: "AI Music Detector"
+                    font.pixelSize: 26
+                    font.bold: true
+                }
+                Label {
+                    text: "ArtifactNet + SONICS — детекция AI-музыки"
+                    opacity: 0.7
+                }
             }
 
-            Button {
-                text: "Запись с микрофона"
-                onClicked: bridge.detectMic()
+            Item { Layout.fillWidth: true }
+
+            BusyIndicator {
+                running: window.busy
+                visible: running
             }
         }
 
-        Label {
-            text: "Результат:"
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            radius: 12
+            color: "#1e272c"
+            border.width: 2
+            border.color: (window.verdict !== "") ? window.verdictColor(window.verdict) : "#37474f"
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 16
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+
+                    Button {
+                        text: "Выбрать файл"
+                        enabled: !window.busy
+                        onClicked: bridge.chooseFile()
+                    }
+                    Button {
+                        text: "Запись с микрофона"
+                        enabled: !window.busy
+                        highlighted: true
+                        onClicked: bridge.detectMic()
+                    }
+
+                    Item { Layout.fillWidth: true }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        width: parent.width
+                        spacing: 10
+
+                        Label {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: window.verdict === "" ? "Перетащите аудиофайл сюда" : window.verdict
+                            font.pixelSize: window.verdict === "" ? 20 : 40
+                            font.bold: window.verdict !== ""
+                            color: window.verdict === "" ? "#90a4ae" : window.verdictColor(window.verdict)
+                        }
+
+                        Label {
+                            Layout.alignment: Qt.AlignHCenter
+                            visible: window.verdict === "" && !window.busy
+                            text: "wav · mp3 · flac — или выберите файл / запишите с микрофона"
+                            opacity: 0.6
+                        }
+
+                        Label {
+                            Layout.alignment: Qt.AlignHCenter
+                            visible: window.busy
+                            text: "Анализирую…"
+                            opacity: 0.8
+                        }
+
+                        ColumnLayout {
+                            visible: window.verdict !== "" && window.verdict !== "Error"
+                            Layout.fillWidth: true
+                            Layout.topMargin: 12
+                            Layout.leftMargin: 40
+                            Layout.rightMargin: 40
+                            spacing: 12
+
+                            SignalBar {
+                                title: "ArtifactNet (вокодеры Suno/Udio)"
+                                value: window.artProb
+                            }
+                            SignalBar {
+                                title: "SONICS (стиль, диффузионные модели)"
+                                value: window.sonProb
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        Label {
-            visible: window.verdict.length > 0
-            text: window.verdict
-            font.pixelSize: 28
-            font.bold: true
-            color: window.verdict === "AI"
-                ? "#ff1744"
-                : window.verdict === "Human"
-                    ? "#00e676"
-                    : "#ffd740"
-        }
+        RowLayout {
+            Layout.fillWidth: true
+            visible: window.rawJson !== ""
 
-        Label {
-            visible: window.summary.length > 0
-            text: window.summary
-            opacity: 0.8
+            Button {
+                text: window.showDetails ? "Скрыть детали" : "Показать детали"
+                flat: true
+                onClicked: window.showDetails = !window.showDetails
+            }
+
+            Item { Layout.fillWidth: true }
         }
 
         Flickable {
-            id: flick
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.preferredHeight: window.showDetails ? 140 : 0
+            visible: window.showDetails
             clip: true
-            contentWidth: resultTextView.paintedWidth
-            contentHeight: resultTextView.paintedHeight
+            contentWidth: width
+            contentHeight: detailText.paintedHeight
 
             TextEdit {
-                id: resultTextView
-                width: flick.width
+                id: detailText
+                width: parent.width
                 readOnly: true
                 selectByMouse: true
                 wrapMode: TextEdit.Wrap
                 font.family: "monospace"
-                text: ""
+                font.pixelSize: 12
+                color: "#b0bec5"
+                text: window.rawJson
             }
         }
     }

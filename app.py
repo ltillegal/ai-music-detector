@@ -46,6 +46,7 @@ class DetectorBridge(QObject):
     """Мост QML <-> Python. Сигналы в QML идут только через resultChanged."""
 
     resultChanged = Signal(str)
+    busyChanged = Signal(bool)
 
     _run_file = Signal(str)
     _run_mic = Signal()
@@ -55,10 +56,14 @@ class DetectorBridge(QObject):
         self._worker = Worker()
         self._thread = QThread(self)
         self._worker.moveToThread(self._thread)
-        self._worker.resultReady.connect(self.resultChanged)
+        self._worker.resultReady.connect(self._on_result)
         self._run_file.connect(self._worker.process_file)
         self._run_mic.connect(self._worker.process_mic)
         self._thread.start()
+
+    def _on_result(self, text):
+        self.busyChanged.emit(False)
+        self.resultChanged.emit(text)
 
     def shutdown(self):
         self._thread.quit()
@@ -67,10 +72,12 @@ class DetectorBridge(QObject):
     @Slot(str)
     def detectFile(self, path):
         if path:
+            self.busyChanged.emit(True)
             self._run_file.emit(path)
 
     @Slot()
     def detectMic(self):
+        self.busyChanged.emit(True)
         self._run_mic.emit()
 
     @Slot()
