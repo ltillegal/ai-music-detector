@@ -68,8 +68,8 @@ macos.permissions = NSMicrophoneUsageDescription:AI Music Detector needs microph
 mode = onefile
 
 # specify any extra nuitka arguments
-# модель детекции нужно явно включить в bundle (иначе в собранном .app её не будет)
-extra_args = --quiet --noinclude-qt-translations --include-data-files=artifactnet_v94_full.onnx=artifactnet_v94_full.onnx --include-data-files=artifactnet_v94_full.onnx.data=artifactnet_v94_full.onnx.data
+# модели детекции и иконку нужно явно включить в bundle (иначе в собранном .app их не будет)
+extra_args = --quiet --noinclude-qt-translations --include-data-files=artifactnet_v94_full.onnx=artifactnet_v94_full.onnx --include-data-files=artifactnet_v94_full.onnx.data=artifactnet_v94_full.onnx.data --include-data-files=lofcz_ai_music_detector.onnx=lofcz_ai_music_detector.onnx --include-data-files=lofcz_preprocessing.json=lofcz_preprocessing.json --include-data-files=ui/icon.png=ui/icon.png
 
 [buildozer]
 

@@ -5,10 +5,10 @@ resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin'",
     "python_full_version < '3.14' and sys_platform == 'win32'",
     "python_full_version < '3.14' and sys_platform == 'emscripten'",
     "python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin'",
     "python_full_version < '3.14' and sys_platform == 'darwin'",
 ]
 
@@ -20,6 +20,7 @@ dependencies = [
     { name = "onnxruntime" },
     { name = "pyside6" },
     { name = "pytest" },
+    { name = "scipy" },
     { name = "sounddevice" },
     { name = "soundfile" },
     { name = "soxr" },
@@ -48,6 +49,7 @@ requires-dist = [
     { name = "onnxruntime", specifier = ">=1.30.0" },
     { name = "pyside6", specifier = ">=6.11.2" },
     { name = "pytest", specifier = ">=9.1.1" },
+    { name = "scipy", specifier = ">=1.11.0" },
     { name = "sounddevice", specifier = ">=0.5.6" },
     { name = "soundfile", specifier = ">=0.14.0" },
     { name = "soxr", specifier = ">=1.1.0" },

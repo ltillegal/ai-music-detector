@@ -48,6 +48,21 @@ def available():
     return True
 
 
+def models_cached():
+    """True, если веса всех моделей уже лежат в кэше HF (скачивать не нужно)."""
+    try:
+        from huggingface_hub import try_to_load_from_cache
+    except Exception:
+        return False
+    for model_id in SONICS_MODELS:
+        model_id = model_id.strip()
+        if not model_id:
+            continue
+        if not isinstance(try_to_load_from_cache(model_id, "pytorch_model.bin"), str):
+            return False
+    return True
+
+
 def _resample(audio, src_sr, dst_sr):
     if len(audio) == 0 or src_sr == dst_sr:
         return np.asarray(audio, dtype=np.float32)
@@ -61,16 +76,16 @@ def _resample(audio, src_sr, dst_sr):
         return np.interp(dst_t, src_t, audio).astype(np.float32)
 
 
-def _load_models():
+def _load_models(progress=None):
     global _MODELS
     if _MODELS is None:
         from sonics import HFAudioClassifier
 
         _MODELS = []
-        for model_id in SONICS_MODELS:
-            model_id = model_id.strip()
-            if not model_id:
-                continue
+        ids = [m.strip() for m in SONICS_MODELS if m.strip()]
+        for i, model_id in enumerate(ids):
+            if progress is not None:
+                progress(i / len(ids), "sonics_model")
             model = HFAudioClassifier.from_pretrained(model_id)
             _MODELS.append((model_id.split("/")[-1], model))
     return _MODELS
@@ -95,18 +110,25 @@ def _windows(y):
     return torch.from_numpy(stacked).float()
 
 
-def score_audio(audio, src_sr):
-    """audio: моно float. Возвращает dict со срабатываниями каждой модели."""
+def score_audio(audio, src_sr, progress=None):
+    """audio: моно float. Возвращает dict со срабатываниями каждой модели.
+
+    ``progress(frac, stage)`` вызывается по мере обработки моделей.
+    """
     import torch
 
     y = _resample(np.asarray(audio, dtype=np.float32), src_sr, SONICS_SR)
     x = _windows(y)
-    models = _load_models()
+    models = _load_models(progress=progress)
 
     out = {}
     tops = []
+    per_model_windows = []
+    n_models = max(len(models), 1)
     with torch.no_grad():
-        for name, model in models:
+        for i, (name, model) in enumerate(models):
+            if progress is not None:
+                progress(i / n_models, "sonics")
             probs = torch.sigmoid(model(x)).flatten()
             k = min(SONICS_TOP_K, probs.numel())
             top_k = float(probs.topk(k).values.mean())
@@ -118,5 +140,12 @@ def score_audio(audio, src_sr):
                 "n_windows": int(probs.numel()),
             }
             tops.append(top_k)
+            per_model_windows.append(probs.cpu().numpy())
+    if progress is not None:
+        progress(1.0, "sonics")
     out["p_ai"] = round(float(np.mean(tops)) if tops else 0.0, 6)
+    if per_model_windows:
+        n = min(len(w) for w in per_model_windows)
+        combined = np.mean([w[:n] for w in per_model_windows], axis=0)
+        out["windows"] = [round(float(v), 4) for v in combined]
     return out

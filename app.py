@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QSettings, QThread, QUrl, Signal, Slot
+from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication, QFileDialog
@@ -26,11 +27,12 @@ class Worker(QObject):
     """Вся работа (детекция, запись) исполняется в отдельном потоке."""
 
     resultReady = Signal(str)
+    progress = Signal(float, str)
 
     @Slot(str)
     def process_file(self, path):
         try:
-            result = detect(path)
+            result = detect(path, progress=self.progress.emit)
         except Exception as exc:
             result = {"file": path, "p_ai": None, "verdict": "Error", "error": str(exc)}
         self.resultReady.emit(json.dumps(result, ensure_ascii=False, indent=2))
@@ -38,7 +40,7 @@ class Worker(QObject):
     @Slot()
     def process_mic(self):
         try:
-            result = record_and_detect(MIC_DURATION)
+            result = record_and_detect(MIC_DURATION, progress=self.progress.emit)
         except Exception as exc:
             result = {"file": "(mic)", "p_ai": None, "verdict": "Error", "error": str(exc)}
         self.resultReady.emit(json.dumps(result, ensure_ascii=False, indent=2))
@@ -50,6 +52,8 @@ class DetectorBridge(QObject):
     resultChanged = Signal(str)
     busyChanged = Signal(bool)
     languageChanged = Signal()
+    darkThemeChanged = Signal()
+    progressChanged = Signal(float, str)
 
     _run_file = Signal(str)
     _run_mic = Signal()
@@ -60,10 +64,12 @@ class DetectorBridge(QObject):
         self._settings = QSettings("ltillegal", "ai-music-detector")
         lang = self._settings.value("language", i18n.DEFAULT_LANG)
         self._language = lang if lang in i18n.LANGUAGES else i18n.DEFAULT_LANG
+        self._dark_theme = self._settings.value("dark_theme", True, type=bool)
         self._worker = Worker()
         self._thread = QThread(self)
         self._worker.moveToThread(self._thread)
         self._worker.resultReady.connect(self._on_result)
+        self._worker.progress.connect(self.progressChanged.emit)
         self._run_file.connect(self._worker.process_file)
         self._run_mic.connect(self._worker.process_mic)
         self._thread.start()
@@ -75,7 +81,7 @@ class DetectorBridge(QObject):
     def _get_sonics_available(self):
         return self._sonics_available
 
-    sonicsAvailable = Property(bool, _get_sonics_available)
+    sonicsAvailable = Property(bool, _get_sonics_available, constant=True)
 
     def _get_language(self):
         return self._language
@@ -89,6 +95,18 @@ class DetectorBridge(QObject):
             self.languageChanged.emit()
 
     language = Property(str, _get_language, _set_language, notify=languageChanged)
+
+    def _get_dark_theme(self):
+        return self._dark_theme
+
+    def _set_dark_theme(self, value):
+        value = bool(value)
+        if value != self._dark_theme:
+            self._dark_theme = value
+            self._settings.setValue("dark_theme", value)
+            self.darkThemeChanged.emit()
+
+    darkTheme = Property(bool, _get_dark_theme, _set_dark_theme, notify=darkThemeChanged)
 
     @Slot(str, str, result=str)
     def tr(self, lang, key):
@@ -137,6 +155,10 @@ def main(argv=None):
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
     app = QApplication(sys.argv)
+
+    icon_path = ROOT / "ui" / "icon.png"
+    if icon_path.is_file():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     if args.smoke_test:
         return 0

@@ -11,6 +11,7 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 
+import i18n
 from check_ai_music import detect
 
 DURATION = 10
@@ -35,7 +36,7 @@ def record(seconds, samplerate=SAMPLE_RATE):
     return audio.reshape(-1)
 
 
-def record_and_detect(seconds=DURATION, model=None, output=None):
+def record_and_detect(seconds=DURATION, model=None, output=None, progress=None, lang=i18n.DEFAULT_LANG):
     audio = record(seconds)
     created_tmp = output is None
     if created_tmp:
@@ -46,7 +47,10 @@ def record_and_detect(seconds=DURATION, model=None, output=None):
         wav_path = output
     try:
         sf.write(wav_path, audio.astype(np.float32), SAMPLE_RATE, subtype="PCM_16")
-        return detect(wav_path, model) if model else detect(wav_path)
+        kwargs = {"progress": progress, "lang": lang}
+        if model:
+            kwargs["model_path"] = model
+        return detect(wav_path, **kwargs)
     finally:
         if created_tmp:
             try:
