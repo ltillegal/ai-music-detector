@@ -30,11 +30,11 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
 
-      - name: uv sync
-        run: uv sync
+      - name: uv sync (without SONICS/torch)
+        run: uv sync --no-group sonics
 
       - name: Deploy .app
-        run: uv run pyside6-deploy app.py
+        run: uv run --no-group sonics pyside6-deploy app.py
 
       - name: Verify release output
         run: ls -la release/

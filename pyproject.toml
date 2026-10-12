@@ -16,15 +16,6 @@ dependencies = [
 [project.scripts]
 ai-music-detector = "ai_music_detector:main"
 
-[project.optional-dependencies]
-sonics = [
-    "torch>=2.4",
-    "torchaudio>=2.4",
-    "timm>=1.0.7",
-    "fvcore>=0.1.5",
-    "sonics @ git+https://github.com/awsaf49/sonics.git",
-]
-
 [build-system]
 requires = ["uv_build>=0.12.13,<0.13.0"]
 build-backend = "uv_build"
@@ -35,3 +26,27 @@ dev = [
     "ordered-set>=4.1.0",
     "zstandard>=0.25.0",
 ]
+# SONICS-детектор. Включён в default-groups, поэтому обычные `uv sync` и
+# `uv run python app.py` его сохраняют. Для лёгкого окружения (например, при
+# сборке macOS .app) используйте `uv sync --no-group sonics`.
+sonics = [
+    "torch>=2.4",
+    "torchaudio>=2.4",
+    "torchvision",
+    "timm>=1.0.7",
+    "fvcore>=0.1.5",
+    "sonics @ git+https://github.com/awsaf49/sonics.git",
+]
+
+[tool.uv]
+default-groups = ["dev", "sonics"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchaudio = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }

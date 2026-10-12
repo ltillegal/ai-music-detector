@@ -136,6 +136,26 @@ ApplicationWindow {
 
         Rectangle {
             Layout.fillWidth: true
+            visible: !bridge.sonicsAvailable
+            radius: 8
+            color: "#3e2723"
+            border.width: 1
+            border.color: "#ff9100"
+            implicitHeight: sonicsWarn.implicitHeight + 20
+
+            Label {
+                id: sonicsWarn
+                anchors.fill: parent
+                anchors.margins: 10
+                wrapMode: Text.WordWrap
+                color: "#ffcc80"
+                text: "SONICS не активен — детекция ограничена ArtifactNet, "
+                    + "вердикт Human не выдаётся. Установите: uv sync"
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
             Layout.fillHeight: true
             radius: 12
             color: "#1e272c"

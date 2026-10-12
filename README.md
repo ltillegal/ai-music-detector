@@ -5,7 +5,7 @@ complementary detectors:
 
 - **ArtifactNet** (ONNX) — hears the *vocoder fingerprint* of Suno/Udio
   (periodic deconvolution artefacts in the 1–8 kHz band).
-- **SONICS** (SpecTTTra, optional) — a style-based spectrogram transformer
+- **SONICS** (SpecTTTra) — a style-based spectrogram transformer
   that catches modern diffusion-based generators (e.g. Google Lyria 3 in
   producer.ai) which leave no vocoder fingerprint.
 
@@ -18,10 +18,11 @@ Audio is converted to mono, resampled to 44.1 kHz and split into 4-second
 windows (`176400` samples) for **ArtifactNet**. The final score is the median
 over windows.
 
-If the optional `sonics` dependencies are installed, **SONICS** also runs:
-audio is resampled to 16 kHz, split into 5-second windows (2.5 s hop), each
-window is unit-variance normalised and passed through two SpecTTTra models
-(`gamma-5s`, `beta-5s`). Per model, the score is the mean of the top-3 windows.
+**SONICS** runs by default (a CPU build of torch is part of the default
+install): audio is resampled to 16 kHz, split into 5-second windows (2.5 s
+hop), each window is unit-variance normalised and passed through two SpecTTTra
+models (`gamma-5s`, `beta-5s`). Per model, the score is the mean of the top-3
+windows.
 
 Verdict logic:
 
@@ -31,12 +32,17 @@ Verdict logic:
 | ArtifactNet `<= 0.4` **and** SONICS `<= 0.5` | `Human` |
 | otherwise | `Uncertain` |
 
+If SONICS is requested but does not run (lean install), a low ArtifactNet score
+yields `Uncertain` rather than a confident `Human`, and a `warning` is added to
+the result — without the style detector a human verdict cannot be corroborated.
+
 ## Requirements
 
 - Python >= 3.13
 - [uv](https://docs.astral.sh/uv/)
 - A microphone (only for mic recording)
-- For SONICS: `torch`, `torchaudio`, `timm`, `fvcore`, `sonics`
+- SONICS is installed by default (`torch`, `torchaudio`, `timm`, `fvcore`,
+  `sonics`); it can be skipped with `--no-group sonics`
 
 ## Installation
 
@@ -47,26 +53,26 @@ uv sync
 ```
 
 `uv sync` installs the core dependencies (PySide6, onnxruntime, soundfile,
-sounddevice). The ONNX model files (`artifactnet_v94_full.onnx` and
+sounddevice) **and** the SONICS stack — the `sonics` dependency group is part
+of `default-groups`, so the CPU build of torch is pulled from the CPU index
+automatically. The ONNX model files (`artifactnet_v94_full.onnx` and
 `artifactnet_v94_full.onnx.data`) are shipped in the repository.
-
-### Optional: enable SONICS
-
-SONICS turns on automatically when both `torch` and `sonics` can be imported.
-On Linux/CPU install the lightweight CPU build of torch:
-
-```bash
-uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-uv pip install "sonics @ git+https://github.com/awsaf49/sonics.git" timm fvcore
-```
 
 The SONICS weights (`gamma-5s`, `beta-5s`, ~69 MB each) are downloaded from
 Hugging Face on first run and cached in `HF_HOME`. CPU inference is roughly
 2 seconds per minute of audio per model.
 
-> Note: a plain `uv sync` (without `--extra sonics`) removes the manually
-> installed `torch`/`sonics` from the environment. Re-run the commands above
-> after `uv sync`.
+### Lean install (without SONICS)
+
+To skip torch (~200 MB) — for a minimal CLI or when packaging a `.app`:
+
+```bash
+uv sync --no-group sonics
+```
+
+SONICS then disables itself (`available()` returns `False`), the CLI adds a
+`warning` and the GUI shows a banner; `Human` verdicts become `Uncertain`
+because the style detector cannot corroborate them.
 
 ## Usage
 
@@ -95,6 +101,7 @@ The result is printed as JSON:
   "p_ai": 0.999565,
   "p_ai_artifactnet": 0.999565,
   "p_ai_sonics": 0.98546,
+  "sonics_available": true,
   "sonics": { "sonics-spectttra-gamma-5s": { "top_k": 0.984, "max": 0.992,
               "mean": 0.984, "win_frac": 1.0, "n_windows": 3 } },
   "duration_sec": 10.0,
@@ -108,6 +115,9 @@ Fields:
 - `p_ai` — combined probability (max of the available signals).
 - `p_ai_artifactnet` — ArtifactNet median over 4-second windows.
 - `p_ai_sonics` — SONICS mean of the two models (omitted without SONICS).
+- `sonics_available` — whether the SONICS detector could be imported.
+- `warning` — present when SONICS is missing (lean install) or the audio is
+  too short; without SONICS the `Human` verdict is suppressed.
 - `sonics.<model>.win_frac` — share of 5-second windows flagged as AI;
   mid values indicate hybrid content (an AI section inside a human track).
 
@@ -146,7 +156,7 @@ platform). You need Xcode Command Line Tools (`xcode-select --install`) and
 ```bash
 git clone https://github.com/ltillegal/ai-music-detector.git
 cd ai-music-detector
-uv sync                       # PySide6 + dev group (nuitka, ordered_set, zstandard)
+uv sync --no-group sonics   # PySide6 + dev group, without the ~200 MB torch
 uv run pyside6-deploy app.py  # reads pysidedeploy.spec
 open "release/AI Music Detector.app"
 ```
@@ -163,9 +173,10 @@ See [`AGENTS.md`](AGENTS.md) for more details.
 
 ### SONICS in the packaged app
 
-Do not install `torch` in the build environment. Nuitka then cannot find it,
-SONICS disables itself (`available()` returns `False`) and the `.app` stays a
-reasonable size — it runs on ArtifactNet only. Installing `torch` makes Nuitka
+Build with `uv sync --no-group sonics` so torch is not in the build
+environment. Nuitka then cannot find it, SONICS disables itself (`available()`
+returns `False`) and the `.app` stays a reasonable size — it runs on
+ArtifactNet only and shows a warning banner. Installing torch makes Nuitka
 bundle it (hundreds of MB and a very slow build).
 
 ### Apple Silicon

@@ -6,11 +6,13 @@
 spectrogram-transformer. Он ловит современные диффузионные генераторы (например
 Google Lyria 3 в producer.ai), которые не оставляют вокодерного отпечатка.
 
-Модуль опциональный: если torch/sonics не установлены, ``available()`` вернёт
-False и вызывающий код просто пропустит этот сигнал.
+Модуль работает, только если torch/sonics установлены (группа ``sonics``).
+Если их нет, ``available()`` вернёт False, вызывающий код пропустит сигнал,
+добавит предупреждение и не будет выдавать уверенный вердикт ``Human``.
 
-Зависимости (опциональная группа ``sonics`` в pyproject.toml):
-    torch, torchaudio, timm, fvcore, sonics (git+https://github.com/awsaf49/sonics.git)
+Зависимости (группа ``sonics`` в pyproject.toml, включена в ``default-groups``):
+    torch, torchaudio, torchvision, timm, fvcore,
+    sonics (git+https://github.com/awsaf49/sonics.git)
 
 Модели скачиваются с HuggingFace при первом запуске и кэшируются в HF_HOME.
 """

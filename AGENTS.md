@@ -9,7 +9,8 @@
 - fixtures/ — тестовые аудио
 
 ## Команда упаковки
-Использовать `uv run pyside6-deploy app.py` для упаковки.
+Использовать `uv run --no-group sonics pyside6-deploy app.py` для упаковки
+(иначе `uv run` синхронизирует default-groups и потащит torch в bundle).
 
 ## Ключевые настройки (pysidedeploy.spec)
 - title: "AI Music Detector"
@@ -21,15 +22,19 @@
 При упаковке должны быть в окружении:
 nuitka, ordered_set, zstandard, onnxruntime, soundfile, sounddevice, PySide6
 
-SONICS (torch/torchaudio/timm/fvcore/sonics) — опционален и **не** нужен для
-базовой упаковки. Если включать его в bundle, размер .app сильно вырастет
-(десятки-сотни МБ из-за torch); в этом случае также нужно включить
-`--include-data-files` для кэшированных весов или скачивать их при первом
-запуске.
+SONICS (torch/torchaudio/timm/fvcore/sonics) — входит в `default-groups`
+(`sonics`), поэтому обычный `uv sync`/`uv run` его ставит. Для лёгкой упаковки
+`.app` используйте `uv sync --no-group sonics` и `uv run --no-group sonics ...`:
+без torch SONICS сам отключается (`available()` → False). Если включать его в
+bundle, размер .app сильно вырастет (десятки-сотни МБ из-за torch); тогда
+дополнительно нужен `--include-data-files` для кэшированных весов или их
+скачивание при первом запуске.
 
 ## Способ проверки
 После упаковки выполнить `open "release/AI Music Detector.app"`.
 
 ## Важное напоминание
-- Логика детекции — в `check_ai_music.py` (+ опционально `sonics_detector.py`).
-- SONICS активируется автоматически только если import torch/sonics проходит.
+- Логика детекции — в `check_ai_music.py` (+ `sonics_detector.py`).
+- SONICS активируется автоматически, если import torch/sonics проходит.
+- Без SONICS вердикт `Human` подавляется (`Uncertain` + `warning`), чтобы не
+  пропустить AI-треки (см. `_apply_verdict(..., degraded=True)`).

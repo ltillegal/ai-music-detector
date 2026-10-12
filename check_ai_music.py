@@ -114,12 +114,16 @@ def predict(chunks, model_path):
     return np.asarray(probs, dtype=np.float32)
 
 
-def _apply_verdict(result, artifact, sonics):
+def _apply_verdict(result, artifact, sonics, degraded=False):
     """Совместить ArtifactNet (физика вокодера) и SONICS (стиль).
 
     ArtifactNet ловит Suno/Udio, но слеп к диффузионным моделям (Lyria 3).
     SONICS наоборот — стиль-ориентированный, поэтому «человек» ставим только
     когда оба сигнала низкие.
+
+    degraded=True — SONICS запрошен, но недоступен: без стиль-детектора нельзя
+    уверенно подтвердить «человека», поэтому низкий ArtifactNet даёт Uncertain,
+    а не ложный Human.
     """
     sonics_p = sonics["p_ai"] if sonics else None
     signals = [p for p in (artifact, sonics_p) if p is not None]
@@ -136,7 +140,10 @@ def _apply_verdict(result, artifact, sonics):
         return
     human_artifact = artifact is None or artifact <= THRESHOLD_HUMAN
     human_sonics = sonics_p is None or sonics_p <= sonics_detector.SONICS_HUMAN_MAX
-    result["verdict"] = "Human" if (human_artifact and human_sonics) else "Uncertain"
+    if human_artifact and human_sonics and not degraded:
+        result["verdict"] = "Human"
+    else:
+        result["verdict"] = "Uncertain"
 
 
 def detect(file, model_path=MODEL_PATH, use_sonics=True):
@@ -165,8 +172,11 @@ def detect(file, model_path=MODEL_PATH, use_sonics=True):
     if artifact is not None:
         result["p_ai_artifactnet"] = round(artifact, 6)
 
+    sonics_available = sonics_detector.available()
+    result["sonics_available"] = sonics_available
+
     sonics = None
-    if use_sonics and sonics_detector.available():
+    if use_sonics and sonics_available:
         try:
             sonics = sonics_detector.score_audio(audio, SR)
             result["sonics"] = sonics
@@ -174,7 +184,12 @@ def detect(file, model_path=MODEL_PATH, use_sonics=True):
         except Exception as exc:  # сам детектор не должен ломать основной результат
             result["sonics_error"] = str(exc)
 
-    _apply_verdict(result, artifact, sonics)
+    degraded = use_sonics and sonics is None
+    if degraded:
+        msg = "SONICS недоступен — детекция ограничена ArtifactNet, вердикт Human не выдаётся"
+        result["warning"] = f"{result['warning']}; {msg}" if result.get("warning") else msg
+
+    _apply_verdict(result, artifact, sonics, degraded=degraded)
     return result
 
 

@@ -7,11 +7,12 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QThread, QUrl, Signal, Slot
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication, QFileDialog
 
+import sonics_detector
 from check_ai_music import detect
 from record_and_check import record_and_detect
 
@@ -53,6 +54,7 @@ class DetectorBridge(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._sonics_available = sonics_detector.available()
         self._worker = Worker()
         self._thread = QThread(self)
         self._worker.moveToThread(self._thread)
@@ -64,6 +66,11 @@ class DetectorBridge(QObject):
     def _on_result(self, text):
         self.busyChanged.emit(False)
         self.resultChanged.emit(text)
+
+    def _get_sonics_available(self):
+        return self._sonics_available
+
+    sonicsAvailable = Property(bool, _get_sonics_available)
 
     def shutdown(self):
         self._thread.quit()
