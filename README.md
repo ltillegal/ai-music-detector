@@ -255,3 +255,13 @@ window icon at runtime.
 ## License
 
 [MIT](LICENSE)
+
+---
+
+## Donate
+
+If this project is useful, you can support development via PayPal:
+
+[![Donate](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=0eskimo0%40gmail.com&item_name=Support&currency_code=USD)
+
+PayPal: **0eskimo0@gmail.com**
