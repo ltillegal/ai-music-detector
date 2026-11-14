@@ -1,0 +1,68 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach assets to (vX.Y.Z)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    name: macOS .dmg
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Deploy .app (nuitka onefile)
+        run: uv run pyside6-deploy app.py
+
+      - name: Locate built bundle
+        id: bundle
+        run: |
+          ls -la release/
+          APP=$(find release -maxdepth 2 -name "*.app" -print -quit)
+          if [[ -z "$APP" ]]; then
+            echo "::warning::No .app bundle produced (nuitka onefile may emit a bare binary) - falling back to .zip"
+            echo "kind=zip" >> "$GITHUB_OUTPUT"
+          else
+            echo "kind=app" >> "$GITHUB_OUTPUT"
+            echo "app=$APP" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package .dmg
+        if: steps.bundle.outputs.kind == 'app'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ -n "${{ inputs.tag }}" ]]; then VERSION="${{ inputs.tag }}"; VERSION="${VERSION#v}"; fi
+          ditto --noextattr --noqtn "${{ steps.bundle.outputs.app }}" "AI Music Detector.app"
+          hdiutil create -volname "AI Music Detector" \
+            -srcfolder "AI Music Detector.app" \
+            -ov -format UDZO \
+            "AI-Music-Detector-${VERSION}-macos.dmg"
+          ls -lh *.dmg
+
+      - name: Package .zip (fallback)
+        if: steps.bundle.outputs.kind == 'zip'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ -n "${{ inputs.tag }}" ]]; then VERSION="${{ inputs.tag }}"; VERSION="${VERSION#v}"; fi
+          ditto -c -k --keepParent release "AI-Music-Detector-${VERSION}-macos.zip"
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: AI-Music-Detector-*-macos.*
