@@ -1,5 +1,7 @@
 # AI Music Detector
 
+[![Donate](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=0eskimo0%40gmail.com&item_name=Support&currency_code=USD)
+
 A desktop app and CLI that detect AI-generated music. It combines three
 complementary detectors:
 
