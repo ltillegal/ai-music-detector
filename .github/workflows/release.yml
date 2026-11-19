@@ -23,7 +23,12 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --group dev --frozen
+
+      - name: Smoke test sources
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python app.py --smoke-test
 
       - name: Deploy .app (nuitka onefile)
         run: uv run pyside6-deploy app.py
@@ -40,6 +45,13 @@ jobs:
             echo "kind=app" >> "$GITHUB_OUTPUT"
             echo "app=$APP" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Ad-hoc codesign the bundle
+        if: steps.bundle.outputs.kind == 'app'
+        run: |
+          set -euo pipefail
+          codesign --force --deep --sign - "${{ steps.bundle.outputs.app }}"
+          codesign --verify --deep --strict "${{ steps.bundle.outputs.app }}"
 
       - name: Package .dmg
         if: steps.bundle.outputs.kind == 'app'
@@ -60,9 +72,24 @@ jobs:
           if [[ -n "${{ inputs.tag }}" ]]; then VERSION="${{ inputs.tag }}"; VERSION="${VERSION#v}"; fi
           ditto -c -k --keepParent release "AI-Music-Detector-${VERSION}-macos.zip"
 
+      - name: Checksum assets
+        id: checksum
+        run: |
+          set -euo pipefail
+          ASSET=$(find . -maxdepth 1 -type f \
+            \( -name 'AI-Music-Detector-*-macos.dmg' -o -name 'AI-Music-Detector-*-macos.zip' \) \
+            -print -quit)
+          test -n "$ASSET"
+          BASENAME=$(basename "$ASSET")
+          shasum -a 256 "$BASENAME" > "$BASENAME.sha256"
+          shasum -a 256 -c "$BASENAME.sha256"
+          echo "asset=$BASENAME" >> "$GITHUB_OUTPUT"
+
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           generate_release_notes: true
-          files: AI-Music-Detector-*-macos.*
+          files: |
+            ${{ steps.checksum.outputs.asset }}
+            ${{ steps.checksum.outputs.asset }}.sha256

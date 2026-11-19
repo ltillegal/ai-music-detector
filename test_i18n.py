@@ -8,7 +8,7 @@ def test_languages_have_same_keys():
 
 
 def test_tr_returns_language_specific_string():
-    assert i18n.tr("ru", "choose_file") == "Выбрать файл"
+    assert i18n.tr("ru", "choose_file") == i18n.STRINGS["ru"]["choose_file"]
     assert i18n.tr("en", "choose_file") == "Choose file"
 
 

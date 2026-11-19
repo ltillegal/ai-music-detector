@@ -1,13 +1,12 @@
 [project]
 name = "ai-music-detector"
 version = "0.1.0"
-description = "Add your description here"
+description = "Desktop app and CLI for detecting AI-generated music with ArtifactNet, SONICS and lofcz"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "onnxruntime>=1.30.0",
     "pyside6>=6.11.2",
-    "pytest>=9.1.1",
     "scipy>=1.11.0",
     "sounddevice>=0.5.6",
     "soundfile>=0.14.0",
@@ -18,19 +17,20 @@ dependencies = [
 ai-music-detector = "ai_music_detector:main"
 
 [build-system]
-requires = ["uv_build>=0.12.13,<0.13.0"]
+requires = ["uv_build>=0.12.13,<0.14.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
     "nuitka>=4.2.1",
     "ordered-set>=4.1.0",
+    "pytest>=9.1.1",
     "ruff>=0.9.0",
     "zstandard>=0.25.0",
 ]
-# Тяжёлые зависимости ТОЛЬКО для пересборки ONNX-моделей SONICS
-# (tools/export_sonics_onnx.py). Обычная работа, тесты и CI их не используют:
-# сам детектор работает на onnxruntime с готовыми .onnx.
+# Heavy dependencies ONLY for re-exporting the SONICS ONNX models
+# (tools/export_sonics_onnx.py). Normal use, tests and CI do not need them:
+# the detector runs on onnxruntime with the prebuilt .onnx files.
 export = [
     "onnx>=1.16",
     "torch>=2.4",
@@ -47,12 +47,14 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-# Намеренно широкий `except Exception` в детекторах: необязательный сигнал не
-# должен ломать основной результат (ArtifactNet/SONICS/lofcz и progress-колбэк).
+# Deliberately broad `except Exception` in the detectors: an optional signal
+# must not break the main result (ArtifactNet/SONICS/lofcz and progress callback).
 ignore = ["E501", "BLE001"]
 
 [tool.uv]
-default-groups = ["dev"]
+# Keep the default install lean: dev tools are requested explicitly with
+# `uv sync --group dev` in CI and packaging docs.
+default-groups = []
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

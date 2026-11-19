@@ -1,4 +1,4 @@
-"""Общая настройка тестов."""
+"""Shared test setup."""
 
 import os
 from pathlib import Path
@@ -8,19 +8,19 @@ import pytest
 import check_ai_music
 import sonics_detector
 
-# Тесты используют относительные пути (модель, fixtures) — фиксируем cwd на корень проекта,
-# чтобы `pytest` работал из любого каталога.
+# Tests use relative paths (model, fixtures) - pin cwd to the repository
+# root so `pytest` works from any directory.
 os.chdir(Path(__file__).resolve().parent)
 
 
 @pytest.fixture(autouse=True)
 def _sonics_offline(monkeypatch):
-    """Не даём тестам скачивать ~138 МБ ONNX-моделей SONICS, если их нет в кэше.
+    """Prevent tests from downloading ~138 MB of SONICS ONNX models.
 
-    SONICS теперь работает на onnxruntime, но ONNX-модели скачиваются лениво.
-    В CI/на чистой машине их нет, поэтому считаем SONICS недоступным, чтобы
-    тесты не лезли в сеть. Когда кэш есть (или задан ``SONICS_ONNX_DIR``),
-    интеграционные тесты с моделями идут полностью.
+    SONICS runs on onnxruntime, but the ONNX models are downloaded lazily.
+    CI and clean machines do not have them, so SONICS is reported unavailable
+    to keep tests offline. When a cache exists (or ``SONICS_ONNX_DIR`` is set),
+    the model integration tests run in full.
     """
     if not sonics_detector.models_cached():
         monkeypatch.setattr(check_ai_music.sonics_detector, "available", lambda: False)

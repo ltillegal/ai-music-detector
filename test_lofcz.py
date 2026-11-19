@@ -5,7 +5,7 @@ import lofcz_detector
 
 pytestmark = pytest.mark.skipif(
     not lofcz_detector.available(),
-    reason="lofcz недоступен (нет onnx-модели или scipy)",
+    reason="lofcz unavailable (missing ONNX model or scipy)",
 )
 
 
