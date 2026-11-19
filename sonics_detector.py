@@ -1,35 +1,39 @@
-"""SONICS (SpecTTTra) — спектрограммный детектор AI-музыки.
+"""SONICS (SpecTTTra) spectrogram detector for AI-generated music.
 
-В отличие от ArtifactNet/lofcz, которые ищут «физический» отпечаток вокодеров
-(периодические пики от транспонированных свёрток), SONICS — стиль-ориентированный
-spectrogram-transformer. Он ловит современные диффузионные генераторы (например
-Google Lyria 3 в producer.ai), которые не оставляют вокодерного отпечатка.
+Unlike ArtifactNet/lofcz, which look for a physical vocoder fingerprint
+(periodic peaks from transposed convolutions), SONICS is a style-based
+spectrogram transformer. It catches modern diffusion generators (for example
+Google Lyria 3 in producer.ai) that leave no vocoder fingerprint.
 
-Детектор работает на ``onnxruntime`` (уже ядровая зависимость для ArtifactNet),
-поэтому torch/timm/fvcore НЕ нужны: модель SpecTTTra экспортирована в ONNX, а
-log-mel препроцессинг считается в numpy. Готовые ``.onnx`` (~69 МБ каждая) и
-мел-фильтр скачиваются при первом запуске и кэшируются.
+The detector runs on ``onnxruntime`` (already a core dependency for
+ArtifactNet), so torch/timm/fvcore are NOT needed: the SpecTTTra model is
+exported to ONNX and the log-mel preprocessing is computed in numpy. The
+ready-made ``.onnx`` files (~69 MB each) and the mel filter are downloaded on
+first run, cached, and verified against the release ``manifest.json``.
 
-Публичный API: ``available()``, ``models_cached()``, ``score_audio()`.
+Public API: ``available()``, ``models_cached()``, ``score_audio()``.
 
-Переменные окружения:
-    SONICS_MODELS      список базовых имён моделей через запятую
-    SONICS_ONNX_DIR    каталог кэша (по умолчанию ~/.cache/ai-music-detector/sonics-onnx)
-    SONICS_ONNX_BASE   базовый URL для скачивания артефактов
-    SONICS_TOP_K       сколько верхних окон усреднять для оценки
+Environment variables:
+    SONICS_MODELS      comma-separated model base names
+    SONICS_ONNX_DIR    cache directory (default ~/.cache/ai-music-detector/sonics-onnx)
+    SONICS_ONNX_BASE   base URL for release artifacts
+    SONICS_TOP_K       how many top windows to average for the score
 """
 
+import hashlib
+import json
 import os
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 import numpy as np
 
 SONICS_SR = 16000
-SONICS_WIN = SONICS_SR * 5  # 5 секунд = 80000 сэмплов
-SONICS_STRIDE = SONICS_WIN // 2  # 2.5 c
+SONICS_WIN = SONICS_SR * 5  # 5 seconds = 80000 samples
+SONICS_STRIDE = SONICS_WIN // 2  # 2.5 s
 SONICS_TOP_K = int(os.environ.get("SONICS_TOP_K", "3"))
 SONICS_MODELS = [
     m.strip()
@@ -40,12 +44,12 @@ SONICS_MODELS = [
     if m.strip()
 ]
 
-# порог «уверенного» срабатывания SONICS (когда ArtifactNet молчит)
+# Confidence threshold for SONICS when ArtifactNet is silent.
 SONICS_STRONG = 0.8
-# порог «человек» для SONICS в паре с низким ArtifactNet
+# Human threshold for SONICS paired with a low ArtifactNet score.
 SONICS_HUMAN_MAX = 0.5
 
-# Препроцессинг (совпадает с tools/export_sonics_onnx.py и config.json моделей).
+# Preprocessing (matches tools/export_sonics_onnx.py and the model config.json).
 N_FFT = 2048
 HOP = 512
 WIN_LEN = 2048
@@ -54,6 +58,10 @@ TOP_DB = 80.0
 N_FRAMES = 1 + SONICS_WIN // HOP  # 157
 MEL_FILTER = "mel_fb.npy"
 N_STFT = N_FFT // 2 + 1  # 1025
+
+MANIFEST = "manifest.json"
+DOWNLOAD_TIMEOUT = 60
+_CHUNK = 1 << 20
 
 DEFAULT_BASE = "https://github.com/ltillegal/ai-music-detector/releases/download/sonics-onnx-v1"
 SONICS_ONNX_BASE = os.environ.get("SONICS_ONNX_BASE", DEFAULT_BASE).rstrip("/")
@@ -76,7 +84,7 @@ def _assets():
 
 
 def available():
-    """True, если onnxruntime установлен (ядровая зависимость)."""
+    """True when onnxruntime is installed (a core dependency)."""
     try:
         import onnxruntime  # noqa: F401
     except Exception:
@@ -85,45 +93,131 @@ def available():
 
 
 def models_cached():
-    """True, если все артефакты (ONNX + мел-фильтр) уже лежат в кэше."""
+    """True when all ONNX/mel artifacts exist (existence only, works offline)."""
     cache = _cache_dir()
-    return all((cache / f).is_file() for f in _assets())
+    return all((cache / name).is_file() for name in _assets())
 
 
-def _download(url, dest, progress=None, frac=(0.0, 1.0)):
+def _validate_base():
+    parsed = urllib.parse.urlparse(SONICS_ONNX_BASE)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError("SONICS_ONNX_BASE must be an http(s) URL")
+
+
+def _fetch_manifest():
+    """Return {filename: {'bytes': int, 'sha256': str}} from the release."""
+    _validate_base()
+    url = f"{SONICS_ONNX_BASE}/{MANIFEST}"
+    req = urllib.request.Request(url, headers={"User-Agent": "ai-music-detector"})
+    with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:  # noqa: S310
+        raw = resp.read()
+
+    try:
+        data = json.loads(raw)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ValueError("invalid SONICS manifest") from exc
+    if not isinstance(data, list):
+        raise ValueError("invalid SONICS manifest")
+
+    entries = {}
+    for item in data:
+        if not isinstance(item, dict):
+            raise ValueError("invalid SONICS manifest entry")
+        name = item.get("file")
+        digest = item.get("sha256")
+        size = item.get("bytes")
+        if not isinstance(name, str) or not isinstance(digest, str) or not isinstance(size, int):
+            raise ValueError(f"incomplete SONICS manifest entry: {name!r}")
+        entries[name] = {"bytes": size, "sha256": digest.lower()}
+    return entries
+
+
+def _file_ok(path, expected):
+    if not path.is_file() or path.stat().st_size != expected["bytes"]:
+        return False
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(_CHUNK), b""):
+            digest.update(block)
+    return digest.hexdigest() == expected["sha256"]
+
+
+def _download(url, dest, expected, progress=None, frac=(0.0, 1.0)):
+    """Download one artifact and verify its size and sha256 before replacing dest."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, headers={"User-Agent": "ai-music-detector"})
-    with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 (доверенный источник)
-        total = int(resp.headers.get("Content-Length") or 0)
-        with tempfile.NamedTemporaryFile(dir=dest.parent, delete=False) as tmp:
-            got = 0
-            while True:
-                block = resp.read(1 << 20)
-                if not block:
-                    break
-                tmp.write(block)
-                got += len(block)
-                if progress is not None and total:
-                    lo, hi = frac
-                    progress(lo + (hi - lo) * got / total, "sonics_model")
-            tmp_path = Path(tmp.name)
-    tmp_path.replace(dest)
+    tmp_path = None
+    try:
+        with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:  # noqa: S310
+            total = int(resp.headers.get("Content-Length") or 0)
+            with tempfile.NamedTemporaryFile(
+                dir=dest.parent, prefix=".sonics_", delete=False
+            ) as tmp:
+                tmp_path = Path(tmp.name)
+                got = 0
+                digest = hashlib.sha256()
+                while True:
+                    block = resp.read(_CHUNK)
+                    if not block:
+                        break
+                    tmp.write(block)
+                    digest.update(block)
+                    got += len(block)
+                    if progress is not None and total:
+                        lo, hi = frac
+                        progress(lo + (hi - lo) * got / total, "sonics_model")
+
+        actual = digest.hexdigest()
+        if got != expected["bytes"] or actual != expected["sha256"]:
+            raise ValueError(
+                f"checksum mismatch for {dest.name}: "
+                f"expected {expected['bytes']} bytes/{expected['sha256']}, "
+                f"got {got} bytes/{actual}"
+            )
+        tmp_path.replace(dest)
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
 
 
 def _ensure_assets(progress=None):
-    assets = _assets()
+    names = _assets()
     cache = _cache_dir()
-    missing = [f for f in assets if not (cache / f).is_file()]
-    if not missing:
-        return
-    n = len(assets)
-    for i, name in enumerate(assets):
-        if (cache / name).is_file():
+    all_present = all((cache / name).is_file() for name in names)
+
+    try:
+        entries = _fetch_manifest()
+    except Exception as exc:
+        if all_present:
+            # A complete cache still works offline; verification resumes on
+            # the next run that has network access.
+            print(f"SONICS cache verification skipped: {exc}", file=sys.stderr)
+            return
+        raise
+
+    missing_entries = [name for name in names if name not in entries]
+    if missing_entries:
+        raise ValueError(f"SONICS manifest is missing: {', '.join(missing_entries)}")
+
+    cache.mkdir(parents=True, exist_ok=True)
+    n = len(names)
+    for i, name in enumerate(names):
+        expected = entries[name]
+        dest = cache / name
+        if _file_ok(dest, expected):
+            if progress is not None:
+                progress((i + 1) / n, "sonics_model")
             continue
         if progress is not None:
             progress(i / n, "sonics_model")
-        _download(f"{SONICS_ONNX_BASE}/{name}", cache / name, progress=progress,
-                  frac=(i / n, (i + 1) / n))
+        _download(
+            f"{SONICS_ONNX_BASE}/{name}",
+            dest,
+            expected,
+            progress=progress,
+            frac=(i / n, (i + 1) / n),
+        )
 
 
 def _load_sessions(progress=None):
@@ -135,7 +229,7 @@ def _load_sessions(progress=None):
         cache = _cache_dir()
         _FB = np.load(cache / MEL_FILTER).astype(np.float32)
         if _FB.ndim != 2 or _FB.shape[1] != N_MELS:
-            raise RuntimeError(f"некорректный мел-фильтр: {_FB.shape}")
+            raise RuntimeError(f"invalid mel filter: {_FB.shape}")
         opts = ort.SessionOptions()
         opts.log_severity_level = 3
         _SESSIONS = []
@@ -162,7 +256,7 @@ def _resample(audio, src_sr, dst_sr):
 
 
 def _windows(y):
-    """Все 5-секундные окна @16кГц, каждое нормировано на единичную дисперсию."""
+    """All 5-second windows at 16 kHz, each normalised to unit variance."""
     if len(y) < SONICS_WIN:
         y = np.pad(y, (0, SONICS_WIN - len(y)))
     starts = list(range(0, max(len(y) - SONICS_WIN, 0) + 1, SONICS_STRIDE))
@@ -178,7 +272,7 @@ def _windows(y):
 
 
 def _logmel(seg, fb):
-    """log-mel спектрограмма (128, 157) ровно как torchaudio в исходном SONICS."""
+    """Log-mel spectrogram (128, 157), matching torchaudio in upstream SONICS."""
     pad = N_FFT // 2
     yp = np.pad(seg, (pad, pad), mode="reflect")
     frames = np.lib.stride_tricks.sliding_window_view(yp, WIN_LEN)[::HOP][:N_FRAMES]
@@ -196,10 +290,10 @@ def _sigmoid(x):
 
 
 def score_audio(audio, src_sr, progress=None):
-    """audio: моно float. Возвращает dict со срабатываниями каждой модели.
+    """audio: mono float. Returns per-model detections.
 
-    ``progress(frac, stage)`` вызывается по мере скачивания/загрузки моделей и
-    обработки окон.
+    ``progress(frac, stage)`` is called while downloading/loading models and
+    processing windows.
     """
     y = _resample(np.asarray(audio, dtype=np.float32), src_sr, SONICS_SR)
     wins = _windows(y)
@@ -239,17 +333,17 @@ def score_audio(audio, src_sr, progress=None):
 
 
 def _clear_cache():
-    """Удалить скачанные артефакты (для тестов/диагностики)."""
+    """Delete downloaded artifacts (for tests/diagnostics)."""
     global _SESSIONS, _FB
     _SESSIONS = None
     _FB = None
     cache = _cache_dir()
     if cache.is_dir():
-        for f in _assets():
-            (cache / f).unlink(missing_ok=True)
+        for name in _assets():
+            (cache / name).unlink(missing_ok=True)
 
 
-if __name__ == "__main__":  # pragma: no cover - ручная проверка
+if __name__ == "__main__":  # pragma: no cover - manual check
     print("cache:", _cache_dir())
     print("base:", SONICS_ONNX_BASE)
     print("available:", available(), "cached:", models_cached())

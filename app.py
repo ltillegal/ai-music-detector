@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QML-интерфейс для детекции AI-музыки через check_ai_music."""
+"""QML interface for AI music detection via check_ai_music."""
 
 import argparse
 import json
@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent
 
 
 class Worker(QObject):
-    """Вся работа (детекция, запись) исполняется в отдельном потоке."""
+    """All work (detection, recording) runs in a separate thread."""
 
     resultReady = Signal(str)
     progress = Signal(float, str)
@@ -47,7 +47,7 @@ class Worker(QObject):
 
 
 class DetectorBridge(QObject):
-    """Мост QML <-> Python. Сигналы в QML идут только через resultChanged."""
+    """QML <-> Python bridge. QML signals are delivered via resultChanged."""
 
     resultChanged = Signal(str)
     busyChanged = Signal(bool)
@@ -131,9 +131,9 @@ class DetectorBridge(QObject):
     def chooseFile(self):
         path, _ = QFileDialog.getOpenFileName(
             None,
-            "Выберите аудиофайл",
+            "Choose an audio file",
             str(Path.home()),
-            "Аудио (*.wav *.mp3 *.flac);;Все файлы (*)",
+            "Audio (*.wav *.mp3 *.flac);;All files (*)",
         )
         if path:
             self.detectFile(path)
@@ -142,9 +142,12 @@ class DetectorBridge(QObject):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         prog="app.py",
-        description="QML-интерфейс для детекции AI-музыки",
+        description="QML interface for AI music detection",
     )
-    parser.add_argument("--smoke-test", action="store_true", help="инициализировать QApplication и выйти с кодом 0")
+    parser.add_argument(
+        "--smoke-test", action="store_true",
+        help="initialize QApplication and exit with code 0",
+    )
     return parser.parse_args(argv)
 
 

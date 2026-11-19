@@ -3,11 +3,17 @@ name: Build macOS .app
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  checks:
+    name: cheap checks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -15,13 +21,71 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
 
-      - name: uv sync
-        run: uv sync
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
 
-      - name: Run tests
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: Pytest
         run: uv run pytest -q
 
+      - name: Python syntax and warnings
+        run: git ls-files -z '*.py' | xargs -0 -r uv run python -W error::SyntaxWarning -m py_compile
+
+      - name: Shell syntax
+        run: |
+          set -euo pipefail
+          find . -type f \( -name '*.sh' -o -name '*.command' \) \
+            -not -path './.git/*' -print0 | xargs -0 -r -n1 bash -n
+
+      - name: YAML and JSON
+        run: |
+          python3 -m pip install --quiet pyyaml
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          import yaml
+
+          problems = []
+          for path in pathlib.Path('.').rglob('*'):
+              if not path.is_file() or '.git' in path.parts:
+                  continue
+              if path.suffix in {'.yaml', '.yml'}:
+                  try:
+                      yaml.safe_load(path.read_text(encoding='utf-8'))
+                  except Exception as exc:
+                      problems.append(f'{path}: {exc}')
+              elif path.suffix == '.json':
+                  try:
+                      json.loads(path.read_text(encoding='utf-8'))
+                  except Exception as exc:
+                      problems.append(f'{path}: {exc}')
+
+          if problems:
+              print('\n'.join(problems), file=sys.stderr)
+              sys.exit(1)
+          print('YAML/JSON ok')
+          PY
+
+      - name: English-only and donation guards
+        run: |
+          set -euo pipefail
+          python3 tools/check_english.py
+          URL='https://www.paypal.com/ncp/payment/MAMKZM5TTVN5U?locale.x=en_US&country.x=US'
+          grep -qF "$URL" README.md
+          grep -qF "$URL" .github/FUNDING.yml
+          if grep -RInE 'https://www\.paypal\.com/ncp/payment/MAMKZM5TTVN5U([^?]|$)' \
+              --exclude-dir=.git .; then
+            echo 'plain PayPal URL found' >&2
+            exit 1
+          fi
+          echo 'English-only and donation guards ok'
+
   build-macos:
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -30,14 +94,17 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
 
-      - name: uv sync
-        run: uv sync
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
 
       - name: Deploy .app
         run: uv run pyside6-deploy app.py
 
       - name: Verify release output
-        run: ls -la release/
+        run: |
+          set -euo pipefail
+          ls -la release/
+          find release -maxdepth 2 -type d -name '*.app' -print -quit | grep -q .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

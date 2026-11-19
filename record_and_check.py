@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Запись 10 секунд с микрофона и детекция AI-музыки."""
+"""Record 10 seconds from the microphone and detect AI music."""
 
 import argparse
 import json
@@ -21,11 +21,11 @@ SAMPLE_RATE = 44100
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         prog="record_and_check.py",
-        description="Запись 10с аудио и детекция AI-музыки через ArtifactNet",
+        description="Record audio and detect AI music with ArtifactNet",
     )
-    parser.add_argument("--seconds", type=float, default=DURATION, help="длительность записи, c")
-    parser.add_argument("--model", default=None, help="путь к ONNX-модели (по умолчанию из check_ai_music)")
-    parser.add_argument("--output", default=None, help="сохранить wav в указанный файл (иначе temp)")
+    parser.add_argument("--seconds", type=float, default=DURATION, help="recording duration in seconds")
+    parser.add_argument("--model", default=None, help="path to the ONNX model (default: from check_ai_music)")
+    parser.add_argument("--output", default=None, help="save the wav to this file (otherwise a temp file is used)")
     args = parser.parse_args(argv)
     return args
 
@@ -63,7 +63,7 @@ def main(argv=None):
     try:
         result = record_and_detect(args.seconds, args.model, args.output)
     except Exception as exc:
-        print(f"ошибка: {exc}", file=sys.stderr)
+        print(f"error: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

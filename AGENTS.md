@@ -1,53 +1,68 @@
-# AI Music Detector — инструкции по упаковке
+# AI Music Detector — packaging notes
 
-## Структура проекта
-- app.py — главный вход (GUI)
-- check_ai_music.py — логика детекции (ArtifactNet + SONICS + lofcz и вердикт)
-- sonics_detector.py — SONICS-детектор (SpecTTTra на onnxruntime, mel в numpy)
-- tools/export_sonics_onnx.py — пересборка ONNX-моделей SONICS (группа `export`)
-- lofcz_detector.py — lofcz-детектор (fakeprint + ONNX)
-- i18n.py — строки интерфейса (en/ru)
-- ui/main.qml — определение интерфейса, ui/icon.png — иконка
-- artifactnet_v94_full.onnx[.data], lofcz_ai_music_detector.onnx,
-  lofcz_preprocessing.json — файлы моделей в репозитории
-- fixtures/ — тестовые аудио
+## Project layout
 
-## Команда упаковки
-Использовать `uv run pyside6-deploy app.py` (torch в окружении больше нет).
+- `app.py` — main GUI entry point
+- `check_ai_music.py` — detection logic (ArtifactNet + SONICS + lofcz and the verdict)
+- `sonics_detector.py` — SONICS detector (SpecTTTra on ONNX Runtime, mel in numpy)
+- `tools/export_sonics_onnx.py` — SONICS ONNX re-export (the `export` dependency group)
+- `lofcz_detector.py` — lofcz detector (vocoder fakeprint + ONNX)
+- `i18n.py` — interface strings (English default, Russian translation)
+- `ui/main.qml` — interface definition; `ui/icon.png` — icon
+- `artifactnet_v94_full.onnx[.data]`, `lofcz_ai_music_detector.onnx`,
+  `lofcz_preprocessing.json` — model files shipped in the repository
+- `fixtures/` — test audio files
 
-## Ключевые настройки (pysidedeploy.spec)
-- title: "AI Music Detector"
-- project_dir: "." (не указывать на .venv, иначе упадёт)
-- qml_files: "ui/main.qml" (обязательно явно указать, иначе QML не попадёт в bundle)
-- icon: если есть .icns — прописать, иначе пропустить
+## Packaging command
 
-## Зависимости
-При упаковке должны быть в окружении:
-nuitka, ordered_set, zstandard, onnxruntime, scipy, soundfile, sounddevice, PySide6
+Run `uv run --group dev pyside6-deploy app.py` (torch is no longer needed in the
+runtime environment). The `dev` group must be installed explicitly: `uv sync`
+installs only the core dependencies.
 
-Артефакты нужно включать в bundle через `--include-data-files` (см. spec):
-ArtifactNet (.onnx + .onnx.data), lofcz (.onnx + конфиг), ui/icon.png.
+## Key settings in `pysidedeploy.spec`
 
-SONICS больше НЕ требует torch: детектор работает на onnxruntime (ядровая
-зависимость), а log-mel считается в numpy. ONNX-модели SONICS (~69 МБ каждая,
-собраны из awsaf49/sonics-spectttra-*) и мел-фильтр скачиваются при первом
-запуске в `~/.cache/ai-music-detector/sonics-onnx` (переопределяется
-`SONICS_ONNX_DIR`; источник — `SONICS_ONNX_BASE`, по умолчанию релиз
-`sonics-onnx-v1`). Тяжёлые torch/timm/sonics остались ТОЛЬКО в группе `export`
-(не в default-groups) — для пересборки ONNX.
+- `title: "AI Music Detector"`
+- `project_dir: "."` (do not point this at `.venv`, the build will fail)
+- `qml_files: "ui/main.qml"` (must be explicit, otherwise QML is not bundled)
+- `icon`: set it if an `.icns` file is available, otherwise leave it empty
 
-## Способ проверки
-После упаковки выполнить `open "release/AI Music Detector.app"`.
+## Dependencies
 
-## Важное напоминание
-- Логика детекции — в `check_ai_music.py` (+ `sonics_detector.py`, `lofcz_detector.py`).
-- SONICS активен всегда (onnxruntime в ядре); нужны лишь скачанные ONNX-модели.
-- Если SONICS запрошен, но не отработал (нет моделей/сеть) — вердикт `Human`
-  подавляется (`Uncertain` + `warning`), см. `_apply_verdict(..., degraded=True)`.
-- Почти бесшумный вход (RMS < `SILENCE_RMS`, ~ -80 dBFS) → вердикт `Uncertain`
-  (`reasons: ["silent_audio"]`), т.к. на нулях модели дают произвольный скор;
-  см. `_apply_verdict(..., silent=True)`.
-- GUI показывает прогресс/стадию, причины вердикта, таймлайн окон; язык и тему
-  можно переключать (хранится в QSettings).
-- Пересборка ONNX: `uv run --group export python tools/export_sonics_onnx.py --out dist/sonics-onnx`,
-  затем `gh release upload sonics-onnx-v1 dist/sonics-onnx/<файлы>` (после — `uv sync`).
+The packaging environment needs:
+nuitka, ordered_set, zstandard, onnxruntime, scipy, soundfile, sounddevice, PySide6.
+
+Artifacts must be added to the bundle with `--include-data-files` (see the spec):
+ArtifactNet (`.onnx` + `.onnx.data`), lofcz (model + config), `ui/icon.png`.
+
+SONICS no longer requires torch: the detector runs on ONNX Runtime (a core
+dependency) and computes log-mel in numpy. The ONNX models (~69 MB each, built
+from `awsaf49/sonics-spectttra-*`) and the mel filter are downloaded on first
+run into `~/.cache/ai-music-detector/sonics-onnx` (override with
+`SONICS_ONNX_DIR`; source override `SONICS_ONNX_BASE`, default release
+`sonics-onnx-v1`). Downloads are verified against the `sha256` values in the
+release `manifest.json`. The heavy torch/timm/sonics/onnx stack remains only in
+the `export` group (not in the default groups) for model re-export.
+
+## How to verify
+
+After packaging, run `open "release/AI Music Detector.app"`.
+
+## Important reminders
+
+- Detection logic lives in `check_ai_music.py` (+ `sonics_detector.py`,
+  `lofcz_detector.py`).
+- SONICS is always active when onnxruntime is available; only the downloaded
+  ONNX models are needed.
+- If SONICS is requested but cannot run (no models/no network), the `Human`
+  verdict is suppressed (`Uncertain` + `warning`), see
+  `_apply_verdict(..., degraded=True)`.
+- Nearly silent input (RMS < `SILENCE_RMS`, about -80 dBFS) yields `Uncertain`
+  (`reasons: ["silent_audio"]`) because models produce arbitrary scores on
+  silence; see `_apply_verdict(..., silent=True)`.
+- The GUI shows progress/stage, verdict reasons and per-window timelines; the
+  language and theme can be switched and are stored in QSettings. English is
+  the default language.
+- ONNX re-export: `uv run --group export python tools/export_sonics_onnx.py --out dist/sonics-onnx`,
+  then `gh release upload sonics-onnx-v1 dist/sonics-onnx/<files>` (afterwards
+  run `uv sync` to restore the lean environment). The exporter writes `sha256`
+  values into `manifest.json` for the models and the mel filter.

@@ -1,18 +1,18 @@
-"""Lofcz-детектор AI-музыки — «fakeprint» + маленький ONNX-классификатор.
+"""Lofcz AI-music detector - fakeprint + a small ONNX classifier.
 
-Идея из lofcz/ai-music-detector (MIT): усреднённый спектр в полосе 1–8 кГц
-сглаживается (min-фильтр), из него вычитается «корпус» (hull) и остаётся
-residue — периодические артефакты вокодеров Suno/Udio. Residue подаётся в
-компактную ONNX-модель, которая отдаёт вероятность AI.
+Based on lofcz/ai-music-detector (MIT): the averaged 1-8 kHz spectrum is
+smoothed with a min-filter, its hull is subtracted, and the residue contains
+periodic artefacts of Suno/Udio vocoders. The residue is fed to a compact ONNX
+model that returns an AI probability.
 
-Это отдельный вокодерный сигнал, дополняющий ArtifactNet; к диффузионным
-генераторам (Lyria 3 и т.п.) он, как и ArtifactNet, слеп.
+This is a vocoder signal complementary to ArtifactNet; like ArtifactNet it is
+blind to diffusion generators (Lyria 3 and similar).
 
-Зависимости: numpy, scipy, onnxruntime, soundfile, soxr (все уже в проекте).
-Модель и конфиг лежат рядом с репозиторием:
+Dependencies: numpy, scipy, onnxruntime, soundfile, soxr (all already in the
+project). Model and config live next to the repository:
     lofcz_ai_music_detector.onnx, lofcz_preprocessing.json
 
-Служит опорой для `check_ai_music.py <file>`.
+Used by `check_ai_music.py <file>`.
 """
 
 import json
@@ -24,11 +24,11 @@ import numpy as np
 try:
     import onnxruntime as ort
     import scipy.ndimage
-except ImportError:  # pragma: no cover - опциональные зависимости
+except ImportError:  # pragma: no cover - optional dependencies
     ort = None
     scipy = None
 
-# Порог «уверенного» срабатывания lofcz (когда другие сигналы молчат).
+# Confidence threshold for lofcz (when the other signals are silent).
 LOFCZ_STRONG = 0.5
 
 _MODEL_FILENAME = "lofcz_ai_music_detector.onnx"
@@ -54,7 +54,7 @@ def _find(name):
 
 
 def available():
-    """True, если зависимости импортируются и файлы модели на месте."""
+    """True when dependencies import and model files are present."""
     if ort is None or scipy is None:
         return False
     return _find(_MODEL_FILENAME) is not None and _find(_CONFIG_FILENAME) is not None
@@ -125,7 +125,7 @@ def _fakeprint(audio, cfg, expected_len):
 
 
 def score_audio(audio, src_sr, max_duration=300):
-    """audio: моно float. Возвращает {'p_ai': prob, 'model': name}."""
+    """audio: mono float. Returns {'p_ai': prob, 'model': name}."""
     cfg = _load_config()
     y = _resample(np.asarray(audio, dtype=np.float32), src_sr, cfg["sample_rate"])
     y = y[: int(max_duration * cfg["sample_rate"])]

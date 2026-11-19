@@ -68,9 +68,11 @@ macos.permissions = NSMicrophoneUsageDescription:AI Music Detector needs microph
 mode = onefile
 
 # specify any extra nuitka arguments
-# ArtifactNet/lofcz/иконку нужно явно включить в bundle (иначе в собранном .app
-# их не будет). ONNX-модели SONICS не бандлятся — скачиваются при первом запуске
-# (~138 МБ); чтобы работало офлайн, добавьте их сюда через --include-data-files.
+# ArtifactNet, lofcz and the icon must be added to the bundle explicitly
+# (otherwise the built .app will not contain them). SONICS ONNX models are not
+# bundled; they are downloaded on first run (~138 MB) and verified against the
+# sha256 values in the release manifest. To work offline, add them here via
+# --include-data-files.
 extra_args = --quiet --noinclude-qt-translations --include-data-files=artifactnet_v94_full.onnx=artifactnet_v94_full.onnx --include-data-files=artifactnet_v94_full.onnx.data=artifactnet_v94_full.onnx.data --include-data-files=lofcz_ai_music_detector.onnx=lofcz_ai_music_detector.onnx --include-data-files=lofcz_preprocessing.json=lofcz_preprocessing.json --include-data-files=ui/icon.png=ui/icon.png
 
 [buildozer]

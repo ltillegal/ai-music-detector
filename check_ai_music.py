@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""CLI-утилита для детекции AI-музыки.
+"""CLI utility for detecting AI-generated music.
 
-Три сигнала:
-- ArtifactNet (ONNX) — отпечаток вокодеров Suno/Udio;
-- SONICS (SpecTTTra, по умолчанию) — стиль-ориентированный детектор для
-  современных диффузионных моделей (Lyria 3 и т.п.);
-- lofcz (fakeprint, по умолчанию) — компактный вокодерный классификатор.
+Three signals:
+- ArtifactNet (ONNX) - vocoder fingerprint of Suno/Udio;
+- SONICS (SpecTTTra, enabled by default) - style-based detector for modern
+  diffusion models (Lyria 3 and similar);
+- lofcz (fakeprint, enabled by default) - compact vocoder classifier.
 
-Сигналы совмещаются в вердикт AI / Human / Uncertain (см. `_apply_verdict`).
+Signals are combined into an AI / Human / Uncertain verdict (see `_apply_verdict`).
 """
 
 import argparse
@@ -26,7 +26,7 @@ import sonics_detector
 
 try:
     import soxr
-except ImportError:  # pragma: no cover - опциональная зависимость
+except ImportError:  # pragma: no cover - optional dependency
     soxr = None
 
 SR = 44100
@@ -34,11 +34,11 @@ CHUNK_LEN = 4 * SR  # 176400
 MODEL_FILENAME = "artifactnet_v94_full.onnx"
 THRESHOLD_AI = 0.6
 THRESHOLD_HUMAN = 0.4
-# ниже этого RMS (~ -80 dBFS) аудио считаем тишиной: модели на нулях дают
-# произвольный скор, поэтому вердикт не выдаём
+# Below this RMS (~ -80 dBFS) audio is treated as silence: models return
+# arbitrary scores on zeros, so no verdict is issued.
 SILENCE_RMS = 1e-4
 
-# Бюджет прогресса по стадиям (доли 0..1).
+# Progress budget per stage (fractions 0..1).
 _P_READ = 0.05
 _P_ARTIFACT = 0.50
 _P_SONICS = 0.90
@@ -62,7 +62,7 @@ MODEL_PATH = _default_model_path()
 
 
 def _emit(progress, frac, stage):
-    """Безопасно вызвать progress-колбэк (не должен ломать детекцию)."""
+    """Call the progress callback safely (it must not break detection)."""
     if progress is None:
         return
     try:
@@ -74,22 +74,22 @@ def _emit(progress, frac, stage):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         prog="check_ai_music.py",
-        description="Детекция AI-музыки через ONNX-модель ArtifactNet",
+        description="Detect AI music with the ArtifactNet ONNX model",
     )
-    parser.add_argument("file", help="путь к аудиофайлу (wav/mp3/flac)")
-    parser.add_argument("--model", default=MODEL_PATH, help="путь к ONNX-модели")
+    parser.add_argument("file", help="path to an audio file (wav/mp3/flac)")
+    parser.add_argument("--model", default=MODEL_PATH, help="path to the ONNX model")
     parser.add_argument(
         "--no-sonics",
         action="store_true",
-        help="не запускать SONICS-детектор",
+        help="skip the SONICS detector",
     )
     parser.add_argument(
         "--no-lofcz",
         action="store_true",
-        help="не запускать lofcz-детектор",
+        help="skip the lofcz detector",
     )
     parser.add_argument("--lang", default=i18n.DEFAULT_LANG, choices=i18n.LANGUAGES,
-                        help="язык предупреждений в выводе")
+                        help="language for warnings in the output")
     args = parser.parse_args(argv)
     return args
 
@@ -97,7 +97,7 @@ def parse_args(argv=None):
 def load_audio(path):
     audio, sr = sf.read(path, dtype="float32", always_2d=False)
     if audio.ndim > 1:
-        audio = audio.mean(axis=1)  # стерео → моно
+        audio = audio.mean(axis=1)  # stereo -> mono
     if sr != SR:
         audio = _resample(audio, sr, SR)
     audio = np.clip(audio, -1.0, 1.0)
@@ -109,7 +109,7 @@ def _resample(audio, src_sr, dst_sr):
         return audio
     if soxr is not None:
         return soxr.resample(audio, src_sr, dst_sr).astype(np.float32)
-    # запасной вариант, если soxr не установлен: линейная интерполяция
+    # Fallback when soxr is not installed: linear interpolation
     src_t = np.arange(len(audio)) / src_sr
     dst_t = np.arange(int(len(audio) * dst_sr / src_sr)) / dst_sr
     return np.interp(dst_t, src_t, audio).astype(np.float32)
@@ -121,7 +121,7 @@ def make_chunks(audio):
     n_chunks = math.ceil(len(audio) / CHUNK_LEN)
     total = n_chunks * CHUNK_LEN
     if len(audio) < total:
-        # добиваем повтором ("wrap"), а не нулями: тишина заставляет модель выдавать NaN
+        # Pad by wrapping, not with zeros: silence makes the model emit NaN
         audio = np.pad(audio, (0, total - len(audio)), mode="wrap")
     return audio.reshape(n_chunks, CHUNK_LEN).astype(np.float32)
 
@@ -147,14 +147,15 @@ def predict(chunks, model_path, progress=None):
 
 
 def _apply_verdict(result, artifact, sonics, lofcz, degraded=False, silent=False):
-    """Совместить ArtifactNet, SONICS и lofcz в вердикт.
+    """Combine ArtifactNet, SONICS and lofcz into a verdict.
 
-    ArtifactNet и lofcz ловят вокодеры Suno/Udio, но слепы к диффузионным
-    моделям (Lyria 3). SONICS — стиль-ориентированный, поэтому «человек»
-    ставим только когда все доступные сигналы низкие.
+    ArtifactNet and lofcz catch Suno/Udio vocoders but are blind to diffusion
+    models (Lyria 3). SONICS is style-based, so Human is reported only when
+    every available signal is low.
 
-    degraded=True — SONICS запрошен, но недоступен: без стиль-детектора нельзя
-    уверенно подтвердить «человека», низкие сигналы дают Uncertain.
+    degraded=True means SONICS was requested but unavailable: without the
+    style detector a Human verdict cannot be confirmed, so low scores yield
+    Uncertain.
     """
     sonics_p = sonics["p_ai"] if sonics else None
     lofcz_p = lofcz["p_ai"] if lofcz else None
@@ -260,7 +261,7 @@ def detect(file, model_path=MODEL_PATH, use_sonics=True, use_lofcz=True,
             result["p_ai_sonics"] = sonics["p_ai"]
             if "windows" in sonics:
                 result["windows"]["sonics"] = sonics["windows"]
-        except Exception as exc:  # детектор не должен ломать основной результат
+        except Exception as exc:  # an optional detector must not break the main result
             result["sonics_error"] = str(exc)
             warnings.append("sonics_error")
     elif use_sonics:
@@ -303,7 +304,7 @@ def main(argv=None):
             lang=args.lang,
         )
     except Exception as exc:
-        print(f"ошибка: {exc}", file=sys.stderr)
+        print(f"error: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

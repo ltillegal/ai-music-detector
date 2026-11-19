@@ -63,7 +63,8 @@ uv sync
 ```
 
 `uv sync` installs the core dependencies (PySide6, onnxruntime, soundfile,
-sounddevice, scipy, soxr) — no torch. The model files
+sounddevice, scipy, soxr) — no torch and no dev tooling. For tests, linting and
+packaging, install the dev group with `uv sync --group dev`. The model files
 (`artifactnet_v94_full.onnx`[.data], `lofcz_ai_music_detector.onnx`,
 `lofcz_preprocessing.json`) are shipped in the repository.
 
@@ -71,9 +72,11 @@ The SONICS ONNX models (`gamma-5s`, `beta-5s`, ~69 MB each) and the mel filter
 are downloaded on first run from the project's
 [`sonics-onnx-v1`](https://github.com/ltillegal/ai-music-detector/releases/tag/sonics-onnx-v1)
 release and cached in `~/.cache/ai-music-detector/sonics-onnx` (the GUI/CLI
-shows a "loading model" stage). Override the cache with `SONICS_ONNX_DIR` and
-the download base with `SONICS_ONNX_BASE`. CPU inference is roughly 2 seconds
-per minute of audio per model.
+shows a "loading model" stage). Each download is checked against the size and
+`sha256` in the release `manifest.json`; a corrupt cached file is redownloaded,
+while a complete cache still works offline. Override the cache with
+`SONICS_ONNX_DIR` and the download base with `SONICS_ONNX_BASE` (http(s) only).
+CPU inference is roughly 2 seconds per minute of audio per model.
 
 The heavy stack (torch, torchaudio, timm, fvcore, sonics, onnx) is only needed
 to **re-export** the models — see `tools/export_sonics_onnx.py` and the `export`
@@ -98,15 +101,16 @@ Drag & drop an audio file onto the window, use **Choose file**, or record
   mid values reveal an AI section inside a human track;
 - a collapsible raw-JSON panel.
 
-The interface language (**RU / EN** switcher, top-right) and the theme
-(dark / light toggle) are remembered between runs.
+The interface opens in **English**. A Russian translation is available via the
+**EN / RU** switcher (top-right); the language and the theme (dark / light
+toggle) are remembered between runs.
 
 ### CLI: analyze a file
 
 ```bash
 uv run python check_ai_music.py track.wav
 uv run python check_ai_music.py track.mp3 --no-sonics --no-lofcz   # ArtifactNet only
-uv run python check_ai_music.py track.wav --lang en                # warnings in English
+uv run python check_ai_music.py track.wav --lang ru                # warnings in Russian
 ```
 
 The result is printed as JSON:
@@ -179,6 +183,7 @@ uv run python record_and_check.py --seconds 10 --output rec.wav  # keep the reco
 ## Testing
 
 ```bash
+uv sync --group dev
 uv run pytest
 ```
 
@@ -196,8 +201,8 @@ platform). You need Xcode Command Line Tools (`xcode-select --install`) and
 ```bash
 git clone https://github.com/ltillegal/ai-music-detector.git
 cd ai-music-detector
-uv sync                       # PySide6 + dev group (no torch)
-uv run pyside6-deploy app.py  # reads pysidedeploy.spec
+uv sync --group dev            # PySide6 + Nuitka dev tooling (no torch)
+uv run pyside6-deploy app.py   # reads pysidedeploy.spec
 open "release/AI Music Detector.app"
 ```
 
